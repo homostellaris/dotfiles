@@ -1,3 +1,4 @@
+ln -s $PWD/.gitconfig $HOME/.gitconfig
 # TODO: Install GH CLI
 # TODO: Install preferred editor
 # TODO: Install Work script

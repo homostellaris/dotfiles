@@ -1,0 +1,10 @@
+[user]
+	name = Daniel Metcalfe
+	email = mrdanielmetcalfe@gmail.com
+	signingkey = 93919C0B6B367BC3
+[commit]
+	gpgsign = true
+[pull]
+	rebase = false
+[push]
+	default = current
