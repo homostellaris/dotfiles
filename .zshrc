@@ -111,3 +111,17 @@ export PATH="/usr/local/opt/mysql@5.6/bin:$PATH"
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion. TODO: Make this work in ZSH.
+
+# Shortcut to ops tools
+function boot() {
+  COMMAND="$@"
+  OPS_TOOLS=/Users/dan/code/Administrate/ops_tools
+  docker-compose-v1 --project-directory=$OPS_TOOLS -f $OPS_TOOLS/docker-compose.yml run --entrypoint="/bin/bash -c" make "bin/boot $COMMAND"
+}
+
+if [[ $CLOUDBOOT ]]; then
+  PROMPT="%F{13}%S%B[CloudBoot]%s%b%f ${PROMPT}"
+  load_envs_from_aws
+  get_tms_sha
+  docker_login
+fi
