@@ -116,7 +116,7 @@ export NVM_DIR="$HOME/.nvm"
 function boot() {
   COMMAND="$@"
   OPS_TOOLS=/Users/dan/code/Administrate/ops_tools
-  docker-compose-v1 --project-directory=$OPS_TOOLS -f $OPS_TOOLS/docker-compose.yml run --entrypoint="/bin/bash -c" make "bin/boot $COMMAND"
+  docker-compose-v1 --project-directory=$OPS_TOOLS -f $OPS_TOOLS/docker-compose.yml run --entrypoint="/bin/bash -c" --rm make "bin/boot $COMMAND"
 }
 
 if [[ $CLOUDBOOT ]]; then
