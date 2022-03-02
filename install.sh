@@ -1,5 +1,5 @@
-ln -s $PWD/.gitconfig $HOME/.gitconfig
-ln -s $PWD/.zshrc $HOME/.zshrc
+ln -nfs $PWD/.gitconfig $HOME/.gitconfig
+ln -nfs $PWD/.zshrc $HOME/.zshrc
 # TODO: Install GH CLI
 # TODO: Install preferred editor
 # TODO: Install Work script
