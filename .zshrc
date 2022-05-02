@@ -123,5 +123,5 @@ if [[ $CLOUDBOOT ]]; then
   PROMPT="%F{13}%S%B[CloudBoot]%s%b%f ${PROMPT}"
   load_envs_from_aws
   get_tms_sha
-  docker_login
+  command -v docker-credential-ecr-login > /dev/null || docker_login
 fi
