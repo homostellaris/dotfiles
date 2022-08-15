@@ -8,3 +8,9 @@
 	rebase = false
 [push]
 	default = current
+[core]
+	editor = code --wait
+[diff]
+	tool = default-difftool
+[difftool "default-difftool"]
+	cmd = code --wait --diff $LOCAL $REMOTE
