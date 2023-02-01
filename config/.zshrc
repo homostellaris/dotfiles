@@ -102,6 +102,9 @@ source $ZSH/oh-my-zsh.sh
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 
+# Added by Amplify CLI binary installer
+export PATH="$HOME/.amplify/bin:$PATH"
+
 ### MY STUFF ###
 
 # Fixes installation of mysql python package.
@@ -112,16 +115,17 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion. TODO: Make this work in ZSH.
 
-# Shortcut to ops tools
-function boot() {
-  COMMAND="$@"
-  OPS_TOOLS=/Users/dan/code/Administrate/ops_tools
-  docker-compose-v1 --project-directory=$OPS_TOOLS -f $OPS_TOOLS/docker-compose.yml run --entrypoint="/bin/bash -c" --rm make "bin/boot $COMMAND"
+# direnv setup
+_direnv_hook() {
+  trap -- '' SIGINT;
+  eval "$("/usr/local/bin/direnv" export zsh)";
+  trap - SIGINT;
 }
-
-if [[ $CLOUDBOOT ]]; then
-  PROMPT="%F{13}%S%B[CloudBoot]%s%b%f ${PROMPT}"
-  load_envs_from_aws
-  get_tms_sha
-  command -v docker-credential-ecr-login > /dev/null || docker_login
+typeset -ag precmd_functions;
+if [[ -z ${precmd_functions[(r)_direnv_hook]} ]]; then
+  precmd_functions=( _direnv_hook ${precmd_functions[@]} )
+fi
+typeset -ag chpwd_functions;
+if [[ -z ${chpwd_functions[(r)_direnv_hook]} ]]; then
+  chpwd_functions=( _direnv_hook ${chpwd_functions[@]} )
 fi
