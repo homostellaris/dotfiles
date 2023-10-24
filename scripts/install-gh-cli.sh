@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-
+#!/bin/sh
 function exit_if_already_installed () {
     if command -v gh &> /dev/null
     then
