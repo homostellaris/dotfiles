@@ -9,3 +9,4 @@ $PWD/scripts/install-zsh-theme.sh
 # TODO: Install Work script
 # TODO: Some sort of documentation of VS Code settings including snazzy.json
 # TODO: Install direnv?
+# TODO: Install Brewfile
