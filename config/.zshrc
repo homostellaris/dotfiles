@@ -108,6 +108,11 @@ fi
 alias ag="alias | grep"
 alias deploy="gh pr comment --body '/deploy'"
 alias scopes="git log | egrep -o '\s*\w+\(\w+\)' | sed 's/^.*(\(.*\))/\1/' | sort -u"
+alias token="curl --silent -X POST --data @/Users/dan/code/sunsave/.staging-auth.json \
+  -H 'X-Amz-Target: AWSCognitoIdentityProviderService.InitiateAuth' \
+  -H 'Content-Type: application/x-amz-json-1.1' \
+  https://cognito-idp.eu-west-2.amazonaws.com/ \
+  | jq -r .AuthenticationResult.AccessToken | pbcopy && echo 'Copied access token to clipboard 📋'"
 
 # Added by Amplify CLI binary installer
 export PATH="$HOME/.amplify/bin:$PATH"
