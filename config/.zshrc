@@ -113,6 +113,9 @@ alias token="curl --silent -X POST --data @/Users/dan/code/sunsave/.staging-auth
   -H 'Content-Type: application/x-amz-json-1.1' \
   https://cognito-idp.eu-west-2.amazonaws.com/ \
   | jq -r .AuthenticationResult.AccessToken | pbcopy && echo 'Copied access token to clipboard 📋'"
+portkill() {
+  lsof -t -i tcp:$1 | xargs kill
+}
 
 # Added by Amplify CLI binary installer
 export PATH="$HOME/.amplify/bin:$PATH"
