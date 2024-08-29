@@ -165,3 +165,6 @@ typeset -ag chpwd_functions;
 if [[ -z ${chpwd_functions[(r)_direnv_hook]} ]]; then
   chpwd_functions=( _direnv_hook ${chpwd_functions[@]} )
 fi
+
+# Adds Android platform tools like ADB to path
+export PATH="/Users/dan/Library/Android/sdk/platform-tools:$PATH"
