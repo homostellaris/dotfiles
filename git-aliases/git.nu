@@ -251,6 +251,15 @@ export def gpoat [] { git push origin --all; git push origin --tags }
 export def gpristine [] { git reset --hard; git clean --force -dfx }
 export def gsta [] { git stash push; git stash save }
 export def gwipe [] { git reset --hard; git clean --force -df }
+# Merge default (origin) branch into current branch
+export def gmd [] { 
+    if (is_git_repo) == false {
+        return
+    }
+    let default_branch = (git symbolic-ref --short refs/remotes/origin/HEAD | sed 's|^origin/||')
+    git fetch origin $default_branch
+    git merge origin/($default_branch)
+}
 # Rename a branch locally and in origin remote
 export def grbr [old_branch: string, new_branch: string] {
     if (is_git_repo) == false {
