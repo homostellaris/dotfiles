@@ -4,6 +4,7 @@
 - [Installation](#installation)
 - [Usage](#usage)
 - [Contributing](#contributing)
+- [Changelog](#changelog)
 - [License](#license)
 
 ## Description
@@ -26,6 +27,10 @@ Once sourced, you can use the provided Git aliases as commands in Nushell.
 
 Issues and pull requests are welcome!
 Feel free to contribute improvements or new aliases.
+
+## Changelog
+
+All changelogs can be found in the [CHANGELOG.md](./CHANGELOG.md) file.
 
 ## License
 
