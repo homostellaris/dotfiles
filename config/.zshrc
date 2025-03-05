@@ -113,6 +113,8 @@ alias token="curl --silent -X POST --data @/Users/dan/code/sunsave/.staging-auth
   -H 'Content-Type: application/x-amz-json-1.1' \
   https://cognito-idp.eu-west-2.amazonaws.com/ \
   | jq -r .AuthenticationResult.AccessToken | pbcopy && echo 'Copied access token to clipboard 📋'"
+alias t="bun test --watch"
+
 portkill() {
   lsof -t -i tcp:$1 | xargs kill
 }
