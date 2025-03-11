@@ -231,7 +231,7 @@ export alias gstu = gsta --include-untracked
 export alias gsu = git submodule update
 export alias gsw = git switch
 export alias gswc = git switch --create
-export alias gswd = git switch (git_develop_branch)
+export alias gswd = git switch (git symbolic-ref --short refs/remotes/origin/HEAD | sed 's|^origin/||' | str trim)
 export alias gswi = git switch (git branch --all | fzf --no-preview --height=50 --border | str trim)  # switch branch
 export alias gswm = git switch (git_main_branch)
 export alias gta = git tag --annotate
