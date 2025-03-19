@@ -5,6 +5,6 @@
     maintainers: [
         "@KamilKleina"
     ],
-    type: aliases,
+    type: script,
     license: "MIT"
 }
