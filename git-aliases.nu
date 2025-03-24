@@ -227,7 +227,6 @@ export alias gstd = git stash drop
 export alias gstl = git stash list
 export alias gstp = git stash pop
 export alias gsts = git stash show --patch
-export alias gstu = gsta --include-untracked
 export alias gsu = git submodule update
 export alias gsw = git switch
 export alias gswc = git switch --create
@@ -250,6 +249,7 @@ export alias gwtrm = git worktree remove
 export def gpoat [] { git push origin --all; git push origin --tags }
 export def gpristine [] { git reset --hard; git clean --force -dfx }
 export def gsta [] { git stash push; git stash save }
+export def gstu [] { git stash push; git stash save --include-untracked }
 export def gwipe [] { git reset --hard; git clean --force -df }
 # Merge default (origin) branch into current branch
 export def gmd [] { 
