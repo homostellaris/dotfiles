@@ -15,12 +15,10 @@ def git_develop_branch [] {
     let branches = ["dev", "devel", "develop", "development"]
     for $branch in $branches {
         if (git show-ref -q --verify refs/heads/$branch | complete | get exit_code) == 0 {
-            print $branch
-            return 0
+            return $branch
         }
     }
-    print develop
-    return 1
+    return develop
 }
 # Check if main exists and use instead of master, fallback to master
 def git_main_branch [] {
@@ -33,13 +31,11 @@ def git_main_branch [] {
         for $branch in $branches {
             let $full_ref = $"refs/($ref)/($branch)"
             if (git show-ref -q --verify $full_ref | complete | get exit_code) == 0 {
-                print $branch
-                return 0
+                return $branch
             }
         }
     }
-    print master
-    return 1
+    return master
 }
 def git_current_branch [] {
     $env.GIT_OPTIONAL_LOCKS = 0
