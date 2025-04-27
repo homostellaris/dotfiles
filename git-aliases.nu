@@ -41,6 +41,16 @@ def git_main_branch [] {
     print master
     return 1
 }
+def git_current_branch [] {
+    $env.GIT_OPTIONAL_LOCKS = 0
+    mut ref = (git symbolic-ref --quiet HEAD | complete)
+    if $ref.exit_code == 128 {
+        return
+    } else if $ref.exit_code != 0 {
+        $ref = (git rev-parse --short HEAD | complete)
+    }
+    $ref.stdout | str replace -r '^refs/heads/' '' | str trim
+}
 # Pretty log messages
 def _git_log_prettily [args: string = ""] {
     if (is_git_repo) == false {
@@ -127,7 +137,7 @@ export alias gfg = git ls-files | grep
 export alias gfo = git fetch origin
 export alias gga = git gui citool --amend
 export alias ggc = git gui citool
-export alias ggpull = git pull origin "(git_current_branch)"
+export alias ggpull = git pull origin (git_current_branch)
 export alias ggpush = git push origin (git_current_branch)
 export alias ggsup = git branch --set-upstream-to=origin/(git_current_branch)
 export alias ghh = git help
