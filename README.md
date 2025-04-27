@@ -6,6 +6,7 @@
 - [Contributing](#contributing)
 - [Changelog](#changelog)
 - [License](#license)
+- [Inspiration](#inspiration)
 
 ## Description
 
@@ -35,3 +36,10 @@ All changelogs can be found in the [CHANGELOG.md](./CHANGELOG.md) file.
 ## License
 
 This project is licensed under the MIT License.
+
+## Inspiration
+
+This plugin is based on
+ [ohmyzsh-git-plugin](https://github.com/ohmyzsh/ohmyzsh/blob/master/plugins/git/git.plugin.zsh), originally
+ created for Zsh. It has been adapted for Nushell to provide the same
+ functionality
