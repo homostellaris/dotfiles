@@ -170,3 +170,6 @@ fi
 
 # Adds Android platform tools like ADB to path
 export PATH="/Users/dan/Library/Android/sdk/platform-tools:$PATH"
+
+# Adds Atuin history
+eval "$(atuin init zsh)"
