@@ -173,3 +173,10 @@ export PATH="/Users/dan/Library/Android/sdk/platform-tools:$PATH"
 
 # Adds Atuin history
 eval "$(atuin init zsh)"
+
+# Created by `pipx` on 2025-06-05 09:55:33
+export PATH="$PATH:/Users/dan/.local/bin"
+
+# bun
+export BUN_HOME="$HOME/.bun"
+export PATH="$BUN_HOME/bin:$PATH"
