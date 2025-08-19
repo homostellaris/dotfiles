@@ -1,0 +1,10 @@
+{
+    name: git-aliases,
+    description: "useful git aliases",
+    version: "0.1.0",
+    maintainers: [
+        "@KamilKleina"
+    ],
+    type: script,
+    license: "MIT"
+}
