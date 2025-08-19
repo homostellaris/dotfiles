@@ -1,7 +1,7 @@
 # config.nu
 #
 # Installed by:
-# version = "0.104.1"
+# version = 0.104.1
 #
 # This file is used to override default Nushell settings, define
 # (or import) custom commands, or run any other startup tasks.
@@ -20,5 +20,13 @@ $env.config.buffer_editor = 'code'
 
 # TODO: Solve Prisma/Sentry thinking its darwin instead of darwin-arm architecture
 # TODO: Add aliases
+alias deploy = gh pr comment --body '/deploy'
+alias scopes = git log | egrep -o '\s*\w+\(\w+\)' | sed 's/^.*(\(.*\))/\1/' | sort -u
+# alias token = curl --silent -X POST --data @/Users/dan/code/sunsave/.staging-auth.json \
+#   -H 'X-Amz-Target: AWSCognitoIdentityProviderService.InitiateAuth' \
+#   -H 'Content-Type: application/x-amz-json-1.1' \
+#   https://cognito-idp.eu-west-2.amazonaws.com/ \
+#   | jq -r .AuthenticationResult.AccessToken | pbcopy && echo 'Copied access token to clipboard 📋'
+alias t = bun test --watch
 # TODO: Add direnv or something similar
 # TODO: Add NVM or something similar

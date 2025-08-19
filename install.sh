@@ -7,7 +7,7 @@ ln -nfs $PWD/code/style.md $HOME/code/style.md
 ln -nfs $PWD/code/convex.md $HOME/code/convex.md
 ln -nfs $PWD/code/nestjs.md $HOME/code/nestjs.md
 ln -nfs $PWD/CLAUDE.md $HOME/CLAUDE.md
-ln -nfs $PWD/config.nu "$HOME/Library/Application Support/nushell"
+ln -nfs $PWD/nushell/config.nu "$HOME/Library/Application Support/nushell"
 # TODO: Don't need this if Homebrew exists
 # $PWD/scripts/install-gh-cli.sh
 $PWD/scripts/install-zsh-theme.sh
