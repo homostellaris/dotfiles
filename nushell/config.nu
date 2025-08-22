@@ -19,6 +19,7 @@
 $env.config.buffer_editor = 'code'
 
 # TODO: Solve Prisma/Sentry thinking its darwin instead of darwin-arm architecture
+
 # TODO: Add aliases
 alias deploy = gh pr comment --body '/deploy'
 alias scopes = git log | egrep -o '\s*\w+\(\w+\)' | sed 's/^.*(\(.*\))/\1/' | sort -u
@@ -28,5 +29,8 @@ alias scopes = git log | egrep -o '\s*\w+\(\w+\)' | sed 's/^.*(\(.*\))/\1/' | so
 #   https://cognito-idp.eu-west-2.amazonaws.com/ \
 #   | jq -r .AuthenticationResult.AccessToken | pbcopy && echo 'Copied access token to clipboard 📋'
 alias t = bun test --watch
+alias ghw = gh run watch
+overlay use git-aliases/git-aliases.nu
+
 # TODO: Add direnv or something similar
 # TODO: Add NVM or something similar
