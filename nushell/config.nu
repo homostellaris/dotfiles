@@ -16,11 +16,15 @@
 #
 # You can remove these comments if you want or leave
 # them for future reference.
+
+use std/util "path add"
+path add "/usr/local/bin"
+path add "~/.local/bin"
+path add "~/.bun/bin"
+
 $env.config.buffer_editor = 'code'
 
-# TODO: Solve Prisma/Sentry thinking its darwin instead of darwin-arm architecture
-
-# TODO: Add aliases
+# ALIASES
 alias deploy = gh pr comment --body '/deploy'
 alias scopes = git log | egrep -o '\s*\w+\(\w+\)' | sed 's/^.*(\(.*\))/\1/' | sort -u
 # alias token = curl --silent -X POST --data @/Users/dan/code/sunsave/.staging-auth.json \
@@ -34,3 +38,4 @@ overlay use git-aliases/git-aliases.nu
 
 # TODO: Add direnv or something similar
 # TODO: Add NVM or something similar
+# TODO: Solve Prisma/Sentry thinking its darwin instead of darwin-arm architecture
