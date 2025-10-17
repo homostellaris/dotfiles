@@ -1,0 +1,45 @@
+#!/usr/bin/env nu
+def main [environment, service, localport] {
+  let cluster = aws ecs list-clusters |
+    from json | get clusterArns |
+    if ($in | is-empty) {
+      error make { msg: $"Cluster for ($environment) not found"}
+    } else {
+      where $it =~ $environment | split column / | get column2 | get 0
+    }
+  let serviceName = aws ecs list-services --cluster $cluster |
+    from json | get serviceArns |
+    if ($in | is-empty) {
+      error make { msg: $"Service ($service) not found"}
+    } else {
+      where $it =~ $service | split column / | get column3 | get 0
+    }
+  let task = aws ecs list-tasks --cluster $cluster --service-name $serviceName |
+    from json | get taskArns |
+    if ($in | is-empty) {
+      error make { msg: $"Task for ($service) not found"}
+    } else {
+      split column / | get column3 | get 0
+    }
+  let containerId = aws ecs describe-tasks --cluster $cluster --tasks $task |
+    from json | get tasks |
+    if ($in | is-empty) {
+      error make { msg: $"Container for ($service) not found"}
+    } else {
+      get 0 | get containers | where name =~ $service | get runtimeId | get 0
+    }
+
+  portforward $cluster $task $containerId 3000 $localport
+}
+
+def portforward [cluster, task, containerId, remoteport, localport] {
+  let target = $"ecs:($cluster)_($task)_($containerId)"
+  print $"forwarding port to ($target)"
+  (
+    aws ssm start-session
+      --target $target
+      --document-name AWS-StartPortForwardingSession
+      --parameters $"{"portNumber":["($remoteport)"], "localPortNumber":["($localport)"]}"
+      --region eu-west-2
+  )
+}
