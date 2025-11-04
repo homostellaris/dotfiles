@@ -21,6 +21,7 @@ use std/util "path add"
 path add "/usr/local/bin"
 path add "~/.local/bin"
 path add "~/.bun/bin"
+path add "/opt/homebrew/bin"
 
 $env.config.buffer_editor = 'code'
 
