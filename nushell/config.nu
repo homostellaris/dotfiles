@@ -22,6 +22,7 @@ path add "/usr/local/bin"
 path add "~/.local/bin"
 path add "~/.bun/bin"
 path add "/opt/homebrew/bin"
+path add "/opt/homebrew/opt/libpq/bin"
 
 $env.config.buffer_editor = 'code'
 
