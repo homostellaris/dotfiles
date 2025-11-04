@@ -25,6 +25,7 @@ path add "/opt/homebrew/bin"
 path add "/opt/homebrew/opt/libpq/bin"
 
 $env.config.buffer_editor = 'code'
+# $env.config.show_banner = false
 
 # ALIASES
 alias deploy = gh pr comment --body '/deploy'
