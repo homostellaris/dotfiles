@@ -17,15 +17,17 @@
 # You can remove these comments if you want or leave
 # them for future reference.
 
+# Figure out why all homebrew paths are not included by default
 use std/util "path add"
 path add "/usr/local/bin"
 path add "~/.local/bin"
 path add "~/.bun/bin"
 path add "/opt/homebrew/bin"
 path add "/opt/homebrew/opt/libpq/bin"
+path add "/Users/dan/.volta/bin"
 
 $env.config.buffer_editor = 'code'
-# $env.config.show_banner = false
+$env.config.show_banner = false
 
 # ALIASES
 alias deploy = gh pr comment --body '/deploy'
@@ -38,7 +40,3 @@ alias scopes = git log | egrep -o '\s*\w+\(\w+\)' | sed 's/^.*(\(.*\))/\1/' | so
 alias t = bun test --watch
 alias ghw = gh run watch
 overlay use git-aliases/git-aliases.nu
-
-# TODO: Add direnv or something similar
-# TODO: Add NVM or something similar
-# TODO: Solve Prisma/Sentry thinking its darwin instead of darwin-arm architecture
