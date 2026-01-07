@@ -7,7 +7,7 @@
 
 // Optional parameters:
 // @raycast.icon ⏳
-// @raycast.argument1 { "type": "text", "placeholder": "2024-01-01T00:00:000Z" }
+// @raycast.argument1 { "type": "text", "placeholder": "2024-01-01 00:00:000" }
 // @raycast.packageName foo
 
 // Documentation:
