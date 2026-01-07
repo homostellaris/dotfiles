@@ -9,6 +9,7 @@ ln -nfs $PWD/code/nestjs.md $HOME/code/nestjs.md
 ln -nfs $PWD/CLAUDE.md $HOME/CLAUDE.md
 ln -nfs $PWD/nushell/config.nu "$HOME/Library/Application Support/nushell"
 ln -nfs $PWD/nushell/git-aliases "$HOME/Library/Application Support/nushell/git-aliases"
+ln -nfs $PWD/config/.claude/settings.json "$HOME/.claude/settings.json"
 # TODO: Don't need this if Homebrew exists
 # $PWD/scripts/install-gh-cli.sh
 $PWD/scripts/install-zsh-theme.sh
