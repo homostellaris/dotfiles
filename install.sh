@@ -6,7 +6,7 @@ ln -nfs $PWD/config/direnv.toml $HOME/.config/direnv/direnv.toml
 ln -nfs $PWD/code/style.md $HOME/code/style.md
 ln -nfs $PWD/code/convex.md $HOME/code/convex.md
 ln -nfs $PWD/code/nestjs.md $HOME/code/nestjs.md
-ln -nfs $PWD/CLAUDE.md $HOME/CLAUDE.md
+ln -nfs $PWD/CLAUDE.md $HOME/.claude/CLAUDE.md
 ln -nfs $PWD/nushell/config.nu "$HOME/Library/Application Support/nushell"
 ln -nfs $PWD/nushell/git-aliases "$HOME/Library/Application Support/nushell/git-aliases"
 ln -nfs $PWD/config/.claude/settings.json "$HOME/.claude/settings.json"
