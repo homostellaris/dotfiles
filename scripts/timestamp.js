@@ -7,7 +7,7 @@
 
 // Optional parameters:
 // @raycast.icon ⏳
-// @raycast.argument1 { "type": "text", "placeholder": "2024-01-01 00:00:000" }
+// @raycast.argument1 { "type": "text", "placeholder": "2024-01-01 00:00:000", "optional": true }
 // @raycast.packageName foo
 
 // Documentation:
@@ -16,5 +16,7 @@
 // @raycast.authorURL https://raycast.com/homostellaris
 
 const datetimeString = process.argv.slice(2)[0];
-const timestamp = new Date(datetimeString).getTime();
+const timestamp = (
+  datetimeString ? new Date(datetimeString) : new Date()
+).getTime();
 console.log(timestamp);
