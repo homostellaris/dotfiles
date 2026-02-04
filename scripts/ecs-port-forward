@@ -5,21 +5,21 @@ def main [environment, service, localport] {
     if ($in | is-empty) {
       error make { msg: $"Cluster for ($environment) not found"}
     } else {
-      where $it =~ $environment | split column / | get column2 | get 0
+      where $it =~ $environment | split column / | get column1 | get 0
     }
   let serviceName = aws ecs list-services --cluster $cluster |
     from json | get serviceArns |
     if ($in | is-empty) {
       error make { msg: $"Service ($service) not found"}
     } else {
-      where $it =~ $service | split column / | get column3 | get 0
+      where $it =~ $service | split column / | get column2 | get 0
     }
   let task = aws ecs list-tasks --cluster $cluster --service-name $serviceName |
     from json | get taskArns |
     if ($in | is-empty) {
       error make { msg: $"Task for ($service) not found"}
     } else {
-      split column / | get column3 | get 0
+      split column / | get column2 | get 0
     }
   let containerId = aws ecs describe-tasks --cluster $cluster --tasks $task |
     from json | get tasks |
