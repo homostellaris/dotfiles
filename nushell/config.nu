@@ -28,6 +28,7 @@ path add "/Users/dan/.volta/bin"
 
 $env.config.buffer_editor = 'code'
 $env.config.show_banner = false
+$env.EDITOR = 'code' # Set for GH CLI
 
 # ALIASES
 alias deploy = gh pr comment --body '/deploy'
