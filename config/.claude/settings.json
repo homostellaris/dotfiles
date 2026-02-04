@@ -1,24 +1,96 @@
 {
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.segmentapis.com)",
+      "WebSearch",
+      "Bash(bun run dev)",
+      "Bash(bun run typecheck)",
+      "Bash(bun run lint)",
+      "Bash(bun run format)",
+      "Bash(bun run unit)",
+      "Bash(bun run integration)",
+      "Bash(bun run test)",
+      "Bash(bun run build)",
+      "Bash(bun run start)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run check:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run test:*)",
+      "Bash(gh * list *)",
+      "Bash(gh * view *)",
+      "Bash(gh * watch *)",
+      "Bash(gh pr checks *)",
+      "mcp__ide__getDiagnostics",
+      "mcp__plugin_sentry_sentry__find_organizations",
+      "mcp__plugin_sentry_sentry__search_issues",
+      "mcp__plugin_sentry_sentry__get_issue_details",
+      "mcp__plugin_figma_figma__get_design_context",
+      "mcp__plugin_figma_figma__get_metadata",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:results-receiver.actions.githubusercontent.com)",
+      "WebFetch(domain:mcp.sentry.dev)",
+      "WebFetch(domain:productionresultssa12.blob.core.windows.net)"
+    ],
+    "deny": [],
+    "ask": [
+      "Read(./.env.production*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)"
+    ],
+    "defaultMode": "plan"
+  },
   "hooks": {
     "Notification": [
       {
-        "matcher": "permission_prompt",
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "terminal-notifier -title \"Claude needs permission\""
+            "command": "/opt/homebrew/Cellar/claude-notify/1.1.0/lib/claude-notify/core/notifier.sh notification"
           }
         ]
-      },
+      }
+    ],
+    "Stop": [
       {
-        "matcher": "idle_prompt",
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "terminal-notifier -title \"Claude is idle\""
+            "command": "/opt/homebrew/Cellar/claude-notify/1.1.0/lib/claude-notify/core/notifier.sh stop"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | { read file_path; if echo \"$file_path\" | grep -q '\\.ts$'; then bun prettier --write \"$file_path\"; fi; }"
           }
         ]
       }
     ]
-  }
+  },
+  "enabledPlugins": {
+    "code-simplifier@claude-plugins-official": true,
+    "figma@claude-plugins-official": true,
+    "Notion@claude-plugins-official": true,
+    "sentry@claude-plugins-official": true,
+    "slack@claude-plugins-official": true
+  },
+  "model": "opus",
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "excludedCommands": [
+    "git",
+    "docker"
+  ]
 }
