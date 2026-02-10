@@ -84,13 +84,14 @@
     "sentry@claude-plugins-official": true,
     "slack@claude-plugins-official": true
   },
-  "model": "opus",
   "sandbox": {
+    "autoAllowBashIfSandboxed": true,
     "enabled": true,
-    "autoAllowBashIfSandboxed": true
-  },
-  "excludedCommands": [
-    "git",
-    "docker"
-  ]
+    "excludedCommands": [
+      "git:*",
+      "docker:*",
+      "gh:*",
+      "aws:*"
+    ]
+  }
 }
