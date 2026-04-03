@@ -1,4 +1,4 @@
-@code/style.md
+@rules/style.md
 
 # Testing
 
