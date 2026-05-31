@@ -5,7 +5,7 @@ DIR=$(dirname "$0")
 "$DIR/zsh/install.sh"
 "$DIR/direnv/install.sh"
 "$DIR/code/install.sh"
-"$DIR/claude/install.sh"
+"$DIR/agents/install.sh"
 "$DIR/nushell/install.sh"
 "$DIR/brew/install.sh"
 
