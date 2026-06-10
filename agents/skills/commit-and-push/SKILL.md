@@ -15,8 +15,10 @@ Commit and push project changes systematically, ensuring the commit message is f
    - Adhere to `.gitmojirc.json` rules (e.g., if `"emojiFormat": "emoji"`, use raw Unicode emojis like ✨/♻️/🐛 instead of text codes like `:sparkles:`; if `"capitalizeTitle": true`, capitalize the subject line).
 
 2. **Compose Commit Message**:
-   - Prefix the subject line with a relevant Unicode Gitmoji mapping to the change type (e.g., ✨ for features, ♻️ for refactoring, 🔧 for config, 🐛 for fixes).
+   - Start the subject line with a relevant Unicode Gitmoji mapping to the change type (e.g., ✨ for features, ♻️ for refactoring, 🔧 for config, 🐛 for fixes), followed by a single space, and then the description.
+   - Do **NOT** include Conventional Commit type prefixes (such as `feat:`, `refactor:`, `chore:`, or `docs:`). The format must be exactly `[emoji] [description]` (e.g., `✨ add drag and drop` or `♻️ simplify skill definition`).
    - Separated from the subject by a blank line, include a descriptive list of changes in the body if needed.
+
 
 3. **Incorporate AI Co-Authorship**:
    - Add a blank line at the bottom of the commit message body.
