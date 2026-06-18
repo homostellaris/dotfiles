@@ -6,6 +6,7 @@ DIR=$(dirname "$0")
 "$DIR/direnv/install.sh"
 "$DIR/code/install.sh"
 "$DIR/agents/install.sh"
+"$DIR/hyprspace/install.sh"
 "$DIR/nushell/install.sh"
 "$DIR/brew/install.sh"
 
