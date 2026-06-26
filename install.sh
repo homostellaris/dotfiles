@@ -9,6 +9,7 @@ DIR=$(dirname "$0")
 "$DIR/hyprspace/install.sh"
 "$DIR/nushell/install.sh"
 "$DIR/brew/install.sh"
+"$DIR/raycast/install.sh"
 
 echo "Manually install the following"
 echo "- Chrome"
