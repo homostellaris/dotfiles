@@ -22,7 +22,7 @@ inner.vertical = 18
 outer.left = 18
 outer.right = 18
 outer.bottom = 18
-outer.top = [{ monitor."built-in" = 18 }, { monitor."main" = 18 }, 18]
+outer.top = 18
 
 # ---------- MAIN KEY BINDINGS -----------
 
@@ -55,11 +55,19 @@ ctrl-alt-cmd-left = 'focus left'
 ctrl-alt-cmd-down = 'focus down'
 ctrl-alt-cmd-up = 'focus up'
 ctrl-alt-cmd-right = 'focus right'
+ctrl-alt-cmd-h = 'focus left'
+ctrl-alt-cmd-j = 'focus down'
+ctrl-alt-cmd-k = 'focus up'
+ctrl-alt-cmd-l = 'focus right'
 
 ctrl-alt-cmd-shift-left = 'move left'
 ctrl-alt-cmd-shift-down = 'move down'
 ctrl-alt-cmd-shift-up = 'move up'
 ctrl-alt-cmd-shift-right = 'move right'
+ctrl-alt-cmd-shift-h = 'move left'
+ctrl-alt-cmd-shift-j = 'move down'
+ctrl-alt-cmd-shift-k = 'move up'
+ctrl-alt-cmd-shift-l = 'move right'
 
 alt-tab = 'focus-back-and-forth'
 ctrl-alt-cmd-shift-space = 'layout floating tiling'
@@ -78,6 +86,15 @@ esc = ['reload-config', 'mode main']
 r = ['flatten-workspace-tree', 'mode main']
 f = ['layout floating tiling', 'mode main']
 ctrl-alt-cmd-shift-semicolon = 'mode main'
+
+ctrl-alt-cmd-left = 'join-with left'
+ctrl-alt-cmd-down = 'join-with down'
+ctrl-alt-cmd-up = 'join-with up'
+ctrl-alt-cmd-right = 'join-with right'
+ctrl-alt-cmd-h = 'join-with left'
+ctrl-alt-cmd-j = 'join-with down'
+ctrl-alt-cmd-k = 'join-with up'
+ctrl-alt-cmd-l = 'join-with right'
 
 # ---------- WINDOW CONTROL -----------
 
