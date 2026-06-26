@@ -9,10 +9,18 @@
 [push]
 	default = current
 [core]
-	editor = code --wait
+	editor = nvim
 [diff]
-	tool = default-difftool
+	tool = vimdiff
 [difftool "default-difftool"]
 	cmd = code --wait --diff $LOCAL $REMOTE
 [init]
 	defaultBranch = main
+[difftool "vimdiff"]
+	cmd = nvim -d \"$LOCAL\" \"$REMOTE\"
+[difftool]
+	prompt = false
+[merge]
+	tool = vimdiff
+[mergetool "vimdiff"]
+	cmd = nvim -d \"$LOCAL\" \"$MERGED\" \"$REMOTE\"
