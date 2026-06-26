@@ -3,6 +3,7 @@
     "allow": [
       "WebFetch(domain:docs.segmentapis.com)",
       "WebSearch",
+      "Bash(bun cypress run *)",
       "Bash(bun run dev:*)",
       "Bash(bun run typecheck:*)",
       "Bash(bun run lint:*)",
@@ -88,7 +89,9 @@
       "git:*",
       "docker:*",
       "gh:*",
-      "aws:*"
+      "aws:*",
+      "bun cypress *"
     ]
-  }
+  },
+  "effortLevel": "medium"
 }
