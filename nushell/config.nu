@@ -30,7 +30,8 @@ $env.config.buffer_editor = 'code'
 $env.config.show_banner = false
 $env.EDITOR = 'code' # Set for GH CLI
 
-# ALIASES
+# Aliases --------------------------------------------------------------------------------------------------------------
+def c [...args] { with-env { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1" } { claude --add-dir ~/code/sunsave/sunsave/ ...$args } }
 alias deploy = gh pr comment --body '/deploy'
 alias scopes = git log | egrep -o '\s*\w+\(\w+\)' | sed 's/^.*(\(.*\))/\1/' | sort -u
 # alias token = curl --silent -X POST --data @/Users/dan/code/sunsave/.staging-auth.json \
@@ -40,13 +41,15 @@ alias scopes = git log | egrep -o '\s*\w+\(\w+\)' | sed 's/^.*(\(.*\))/\1/' | so
 #   | jq -r .AuthenticationResult.AccessToken | pbcopy && echo 'Copied access token to clipboard 📋'
 alias t = bun test --watch
 alias ghw = gh run watch
+alias n = nvim
+
 overlay use git-aliases/git-aliases.nu
 
 use std/config *
 
+# Direnv ---------------------------------------------------------------------------------------------------------------
 # Initialize the PWD hook as an empty list if it doesn't exist
 $env.config.hooks.env_change.PWD = $env.config.hooks.env_change.PWD? | default []
-
 $env.config.hooks.env_change.PWD ++= [{||
   if (which direnv | is-empty) {
     # If direnv isn't installed, do nothing
@@ -57,3 +60,7 @@ $env.config.hooks.env_change.PWD ++= [{||
   # If direnv changes the PATH, it will become a string and we need to re-convert it to a list
   $env.PATH = do (env-conversions).path.from_string $env.PATH
 }]
+
+# Starship -------------------------------------------------------------------------------------------------------------
+mkdir ($nu.data-dir | path join "vendor/autoload")
+starship init nu | save -f ($nu.data-dir | path join "vendor/autoload/starship.nu")
