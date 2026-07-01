@@ -1,0 +1,36 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "lazyvim-keymaps",
+  "title": "LazyVim Keymaps",
+  "description": "Fuzzy-search every LazyVim keymap, scraped live from lazyvim.org/keymaps.",
+  "icon": "icon.png",
+  "author": "homostellaris",
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "search-keymaps",
+      "title": "Search LazyVim Keymaps",
+      "subtitle": "LazyVim",
+      "description": "Fuzzy-search all LazyVim keymaps by key, description or mode.",
+      "mode": "view"
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.99.0",
+    "@raycast/utils": "^1.19.0"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^1.0.11",
+    "@types/node": "^22.10.0",
+    "@types/react": "19.0.10",
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.5.0"
+  },
+  "scripts": {
+    "build": "ray build",
+    "dev": "ray develop",
+    "lint": "ray lint",
+    "fix-lint": "ray lint --fix"
+  }
+}
