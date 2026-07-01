@@ -79,6 +79,8 @@ ctrl-alt-cmd-equal = 'resize smart +50'
 ctrl-alt-cmd-f = 'fullscreen'
 ctrl-alt-cmd-shift-f = 'macos-native-fullscreen'
 
+ctrl-alt-cmd-e = 'exec-and-forget /Users/dan/.config/hyprspace/scripts/float-nvim.sh'
+
 # ---------- SERVICE MODE -----------
 
 [mode.service.binding]
@@ -147,6 +149,11 @@ run = ["layout floating"]
 if.app-id = "com.anthropic.claude"
 check-further-callbacks = true
 run = ["layout floating"]
+
+[[on-window-detected]]
+if.window-title-regex-substring = 'nvim-float'
+check-further-callbacks = true
+run = ["layout floating", "position center"]
 
 [[on-window-detected]]
 run = ['exec-and-forget /Users/dan/.config/hyprspace/scripts/refresh-labels.sh']
