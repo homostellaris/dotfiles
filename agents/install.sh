@@ -1,5 +1,6 @@
 #!/bin/sh
-DIR=$(dirname "$0")
+DIR=$(cd "$(dirname "$0")" && pwd)
+
 mkdir -p "$HOME/code/homostellaris/.claude"
 ln -nfs "$DIR/CLAUDE.md" "$HOME/code/homostellaris/.claude/CLAUDE.md"
 ln -nfs "$DIR/settings.json" "$HOME/code/homostellaris/.claude/settings.json"

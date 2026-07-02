@@ -1,5 +1,6 @@
 #!/bin/sh
-DIR=$(dirname "$0")
+DIR=$(cd "$(dirname "$0")" && pwd)
+
 
 echo ""
 echo "Raycast: add the following directory as a Script Commands source:"

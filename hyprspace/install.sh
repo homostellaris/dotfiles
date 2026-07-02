@@ -1,5 +1,6 @@
 #!/bin/sh
-DIR=$(dirname "$0")
+DIR=$(cd "$(dirname "$0")" && pwd)
+
 
 mkdir -p "$HOME/.config/hyprspace/scripts"
 ln -nfs "$DIR/config.toml" "$HOME/.config/hyprspace/config.toml"
