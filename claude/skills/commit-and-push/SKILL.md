@@ -1,1 +1,0 @@
-Commit and push the changes. Make sure you include yourself as a co-author. Please prefix the commit subject with [$1]
