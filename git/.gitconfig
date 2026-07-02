@@ -24,3 +24,5 @@
 	tool = vimdiff
 [mergetool "vimdiff"]
 	cmd = nvim -d \"$LOCAL\" \"$MERGED\" \"$REMOTE\"
+[credential]
+	helper = !gh auth git-credential
