@@ -1,13 +1,15 @@
 #!/bin/sh
-DIR=$(dirname "$0")
+DIR=$(cd "$(dirname "$0")" && pwd)
 
 "$DIR/git/install.sh"
 "$DIR/zsh/install.sh"
 "$DIR/direnv/install.sh"
 "$DIR/code/install.sh"
 "$DIR/agents/install.sh"
+"$DIR/claude/install.sh"
 "$DIR/hyprspace/install.sh"
 "$DIR/nushell/install.sh"
+
 "$DIR/brew/install.sh"
 "$DIR/raycast/install.sh"
 

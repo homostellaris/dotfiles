@@ -11,9 +11,6 @@ ln -nfs "$DIR/AGENTS.md" "$HOME/code/homostellaris/.agents/CLAUDE.md"
 ln -nfs "$DIR/AGENTS.md" "$HOME/code/homostellaris/.claude/AGENTS.md"
 ln -nfs "$DIR/AGENTS.md" "$HOME/code/homostellaris/.claude/CLAUDE.md"
 
-# Symlink settings.json to both places
-ln -nfs "$DIR/settings.json" "$HOME/code/homostellaris/.agents/settings.json"
-ln -nfs "$DIR/settings.json" "$HOME/code/homostellaris/.claude/settings.json"
 
 # Symlink global rules for Antigravity/Gemini
 mkdir -p "$HOME/.gemini/config"
