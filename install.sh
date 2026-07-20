@@ -1,31 +1,11 @@
 #!/bin/sh
+# Entry point. Runs the cross-platform base everywhere, then the macOS-only
+# extras on Darwin. In a headless/Linux environment (e.g. a Docker sandbox) run
+# ./install-base.sh directly.
 DIR=$(cd "$(dirname "$0")" && pwd)
 
-"$DIR/git/install.sh"
-"$DIR/zsh/install.sh"
-"$DIR/direnv/install.sh"
-"$DIR/code/install.sh"
-"$DIR/agents/install.sh"
-"$DIR/claude/install.sh"
-"$DIR/hyprspace/install.sh"
-"$DIR/nushell/install.sh"
+"$DIR/install-base.sh"
 
-"$DIR/brew/install.sh"
-"$DIR/raycast/install.sh"
-
-echo "Manually install the following"
-echo "- Chrome"
-echo "- Obsidian"
-echo "- Todoist"
-echo "- Bitwarden"
-echo "- Discord"
-echo "- Google Drive"
-echo "- WhatsApp"
-echo "- Microsoft Remote Desktop"
-echo "- Figma"
-echo "- Notion"
-echo "- Raindrop"
-echo "- AltTab"
-echo "- SteelSeries Exact Mouse Tool"
-echo "- Mionix Hub"
-echo "- Logitech G Hub"
+if [ "$(uname)" = "Darwin" ]; then
+  "$DIR/install-macos.sh"
+fi

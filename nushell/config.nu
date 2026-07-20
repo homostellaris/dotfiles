@@ -17,18 +17,23 @@
 # You can remove these comments if you want or leave
 # them for future reference.
 
-# Figure out why all homebrew paths are not included by default
+# Cross-platform PATH additions (home-relative so they work on any machine).
 use std/util "path add"
-path add "/usr/local/bin"
 path add "~/.local/bin"
 path add "~/.bun/bin"
-path add "/opt/homebrew/bin"
-path add "/opt/homebrew/opt/libpq/bin"
-path add "/Users/dan/.volta/bin"
+path add "~/.volta/bin"
+# macOS-only (Homebrew) paths.
+if $nu.os-info.name == "macos" {
+  path add "/usr/local/bin"
+  path add "/opt/homebrew/bin"
+  path add "/opt/homebrew/opt/libpq/bin"
+}
 
-$env.config.buffer_editor = 'code'
+# Prefer VS Code when present (macOS), else nvim (headless/sandbox).
+let editor = (if (which code | is-not-empty) { 'code' } else { 'nvim' })
+$env.config.buffer_editor = $editor
 $env.config.show_banner = false
-$env.EDITOR = 'code' # Set for GH CLI
+$env.EDITOR = $editor # Set for GH CLI
 
 # Aliases --------------------------------------------------------------------------------------------------------------
 def c [...args] { with-env { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1" } { claude --add-dir ~/code/sunsave/sunsave/ ...$args } }
