@@ -11,9 +11,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
 
-const WIN_REPORTS_DIR = '/mnt/c/Users/mrdan/.local/share/agent-reports';
-const LINUX_REPORTS_DIR = path.join(os.homedir(), '.local/share/agent-reports');
-const REPORTS_DIR = fs.existsSync('/mnt/c/Users/mrdan') ? WIN_REPORTS_DIR : LINUX_REPORTS_DIR;
+const REPORTS_DIR = path.join(os.homedir(), '.local/share/agent-reports');
 
 function getTailscaleInfo() {
   let hostname = 'panther';
@@ -262,7 +260,9 @@ function updateIndexHtml() {
 </body>
 </html>`;
 
-  fs.writeFileSync(path.join(REPORTS_DIR, 'index.html'), html, 'utf-8');
+  const indexFile = path.join(REPORTS_DIR, 'index.html');
+  fs.writeFileSync(indexFile, html, 'utf-8');
+  try { fs.chmodSync(indexFile, 0o644); } catch {}
 }
 
 function main() {
@@ -314,6 +314,7 @@ OPTIONS:
 
   const destFile = path.join(REPORTS_DIR, `${slug}.html`);
   fs.copyFileSync(fileArg, destFile);
+  try { fs.chmodSync(destFile, 0o644); } catch {}
 
   updateIndexHtml();
 
