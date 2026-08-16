@@ -11,7 +11,9 @@ import path from 'node:path';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
 
-const REPORTS_DIR = path.join(os.homedir(), '.local/share/agent-reports');
+const SHARE_DIR = path.join(os.homedir(), 'share');
+const LEGACY_DIR = path.join(os.homedir(), '.local/share/agent-reports');
+const REPORTS_DIR = fs.existsSync(SHARE_DIR) ? SHARE_DIR : LEGACY_DIR;
 
 function getTailscaleInfo() {
   let hostname = 'panther';
