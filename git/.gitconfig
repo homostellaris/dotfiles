@@ -26,3 +26,6 @@
 	cmd = nvim -d \"$LOCAL\" \"$MERGED\" \"$REMOTE\"
 [credential]
 	helper = !gh auth git-credential
+[alias]
+	symboldiff = "!~/.agents/skills/symboldiff/scripts/symboldiff.mjs"
+	sdiff = "!~/.agents/skills/symboldiff/scripts/symboldiff.mjs"
