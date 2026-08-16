@@ -14,20 +14,20 @@ import { execSync } from 'node:child_process';
 const REPORTS_DIR = path.join(os.homedir(), '.local/share/agent-reports');
 
 function getTailscaleInfo() {
-  let hostname = os.hostname();
-  let ip = null;
-  let magicDns = null;
+  let hostname = 'panther';
+  let ip = '100.75.142.1';
+  let magicDns = 'https://panther.tail29c7da.ts.net';
 
   try {
     const statusJson = execSync('tailscale status --json 2>/dev/null', { encoding: 'utf-8', timeout: 1000 });
     const status = JSON.parse(statusJson);
     if (status.Self) {
-      ip = status.Self.TailscaleIPs?.[0] || null;
-      magicDns = status.Self.DNSName ? `https://${status.Self.DNSName.replace(/\.$/, '')}` : null;
+      ip = status.Self.TailscaleIPs?.[0] || ip;
+      magicDns = status.Self.DNSName ? `https://${status.Self.DNSName.replace(/\.$/, '')}` : magicDns;
     }
   } catch {
     try {
-      ip = execSync('tailscale ip -4 2>/dev/null', { encoding: 'utf-8', timeout: 1000 }).trim() || null;
+      ip = execSync('tailscale ip -4 2>/dev/null', { encoding: 'utf-8', timeout: 1000 }).trim() || ip;
     } catch {}
   }
 
