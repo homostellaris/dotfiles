@@ -234,6 +234,19 @@ async function main() {
   const htmlOutPath = customOutPath || path.join(os.tmpdir(), `symboldiff_${Date.now()}.html`);
   fs.writeFileSync(htmlOutPath, htmlContent, 'utf-8');
 
+  // If --host is passed or by default, host in ~/.local/share/agent-reports
+  let hostOutput = null;
+  if (rawArgs.includes('--host')) {
+    try {
+      const hostReportBin = path.join(path.dirname(process.argv[1]), '../../scripts/host-report.mjs');
+      const repoName = path.basename(gitRoot);
+      const slug = `symboldiff-${repoName}-${Date.now()}`;
+      if (fs.existsSync(hostReportBin)) {
+        execSync(`node "${hostReportBin}" "${htmlOutPath}" --name "${slug}" 2>/dev/null`);
+      }
+    } catch {}
+  }
+
   // Launch browser unless --no-open is passed
   if (!noOpen) {
     try {
@@ -252,7 +265,8 @@ async function main() {
   // Print Markdown summary table to stdout for Agent / Terminal
   console.log(`\n# ⚡ SymbolDiff: ${comparisonTitle}\n`);
   console.log(`**Summary**: \`${diffData.summary.files}\` files modified | \`${diffData.summary.totalSymbols}\` symbols changed (\`⚡ ${diffData.summary.signatureModified}\` sig mod, \`📝 ${diffData.summary.bodyModified}\` body mod, \`✨ ${diffData.summary.added}\` added, \`🔥 ${diffData.summary.deleted}\` deleted)\n`);
-  console.log(`🖥️ **Interactive Visualizer**: [Open in Browser](file://${htmlOutPath})\n`);
+  console.log(`🖥️ **Interactive Visualizer**: [Open in Browser](file://${htmlOutPath})`);
+  console.log(`📱 **Tailscale Phone Host**: \`host-report "${htmlOutPath}"\`\n`);
 
   for (const file of fileDiffs) {
     console.log(`### 📂 \`${file.path}\``);
