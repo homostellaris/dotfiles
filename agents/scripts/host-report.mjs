@@ -14,9 +14,9 @@ import { execSync } from 'node:child_process';
 const REPORTS_DIR = path.join(os.homedir(), '.local/share/agent-reports');
 
 function getTailscaleInfo() {
-  let hostname = 'panther-1';
+  let hostname = 'panther';
   let ip = null;
-  let magicDns = 'https://panther-1.tail29c7da.ts.net';
+  let magicDns = 'https://panther.tail29c7da.ts.net';
 
   try {
     const statusJson = execSync('tailscale status --json 2>/dev/null', { encoding: 'utf-8', timeout: 1000 });
