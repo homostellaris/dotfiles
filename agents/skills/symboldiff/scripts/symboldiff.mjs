@@ -234,16 +234,12 @@ async function main() {
   const htmlOutPath = customOutPath || path.join(os.tmpdir(), `symboldiff_${Date.now()}.html`);
   fs.writeFileSync(htmlOutPath, htmlContent, 'utf-8');
 
-  // If --host is passed or by default, host in ~/.local/share/agent-reports
-  let hostOutput = null;
+  // If --host is passed, host in ~/.local/share/agent-reports
   if (rawArgs.includes('--host')) {
     try {
-      const hostReportBin = path.join(path.dirname(process.argv[1]), '../../scripts/host-report.mjs');
       const repoName = path.basename(gitRoot);
-      const slug = `symboldiff-${repoName}-${Date.now()}`;
-      if (fs.existsSync(hostReportBin)) {
-        execSync(`node "${hostReportBin}" "${htmlOutPath}" --name "${slug}" 2>/dev/null`);
-      }
+      const slug = `symboldiff-${repoName}`;
+      execSync(`host-report "${htmlOutPath}" --name "${slug}" 2>/dev/null || true`);
     } catch {}
   }
 
