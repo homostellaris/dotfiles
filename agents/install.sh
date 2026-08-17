@@ -35,3 +35,9 @@ for skill_path in "$DIR"/skills/*; do
   fi
 done
 
+# Symlink scripts to ~/bin
+mkdir -p "$HOME/bin"
+ln -nsf "$DIR/scripts/build.py" "$HOME/bin/build"
+chmod +x "$DIR/scripts/build.py"
+
+
