@@ -421,19 +421,18 @@ class BuildOrchestrator:
             print("❌ Planner agent execution encountered an error.")
             return 1
 
-        self.publish_tailscale_report(output_path, f"{self.spec.target_project}/{self.spec.identifier}")
-        plan_url = f"https://panther.tail29c7da.ts.net/{self.spec.target_project}/{self.spec.identifier}.html"
-        self.state.visual_plan_url = plan_url
+        dashboard_url = self.publish_task_dashboard(status="PLAN REVIEW")
+        self.state.visual_plan_url = dashboard_url
         self.state.stage = "AWAITING_PLAN_APPROVAL"
         self.save_state(self.state)
 
         notification_message = (
-            f"⚠️ [Plan Review Required] Visual plan generated for '{self.spec.title}'.\n"
-            f"🔗 Tailscale Plan: {plan_url}\n"
+            f"⚠️ [Plan Review Required] Task dashboard & visual plan generated for '{self.spec.title}'.\n"
+            f"🔗 Task Dashboard: {dashboard_url}\n"
             f"Reply 'approve' or tap: https://wa.me/447812754124?text=approve%20{self.spec.identifier}"
         )
         self.send_openclaw_notification(notification_message)
-        print(f"✅ Visual plan published: {plan_url}")
+        print(f"✅ Task dashboard published: {dashboard_url}")
         print("⏸️  Awaiting human plan approval. Exiting cleanly.")
         return 0
 
@@ -543,10 +542,13 @@ class BuildOrchestrator:
         pr_url = create_result.stdout.strip()
         print(f"🎉 Pull Request created: {pr_url}")
 
+        self.state.pr_url = pr_url
+        dashboard_url = self.publish_task_dashboard(status="PR OPEN")
+
         notification_message = (
             f"🔔 [PR Ready for Review] Implementation complete for '{self.spec.title}'.\n"
             f"📌 PR: {pr_url}\n"
-            f"📊 Visual Plan: {self.state.visual_plan_url or 'N/A'}"
+            f"📱 Task Dashboard: {dashboard_url}"
         )
         self.send_openclaw_notification(notification_message)
         return 0
@@ -645,11 +647,13 @@ class BuildOrchestrator:
             subprocess.run(["git", "push", "origin", self.state.branch_name], cwd=self.state.worktree_dir)
 
         self.state.verifier_passed = True
+        dashboard_url = self.publish_task_dashboard(status="VERIFIED")
         self.save_state(self.state)
 
         notification_message = (
             f"✅ [Ready for Merge] PR #{self.state.pr_number} for '{self.spec.title}' is verified & hardened.\n"
             f"🔗 PR Link: {self.state.pr_url}\n"
+            f"📱 Task Dashboard: {dashboard_url}\n"
             f"Ready to merge when you are."
         )
         self.send_openclaw_notification(notification_message)
@@ -665,11 +669,12 @@ class BuildOrchestrator:
         self.state.merged = True
         self.state.deployed = True
         self.state.stage = "COMPLETED"
+        dashboard_url = self.publish_task_dashboard(status="DEPLOYED")
         self.save_state(self.state)
 
         notification_message = (
             f"🎉 [Deployed] Feature '{self.spec.title}' has been merged and deployed to production!\n"
-            f"Spec: {self.spec.identifier}"
+            f"📱 Task Dashboard: {dashboard_url}"
         )
         self.send_openclaw_notification(notification_message)
         print(f"🌟 Complete! Feature '{self.spec.title}' is live.")
@@ -739,6 +744,60 @@ class BuildOrchestrator:
                 return process.returncode == 0
             print("❌ Antigravity runtime not found.")
             return False
+
+    def publish_task_dashboard(self, status: str = "PLAN REVIEW", symboldiff_path: Optional[str] = None) -> str:
+        host_report_bin = shutil.which("host-report") or str(Path.home() / "bin" / "host-report")
+        dashboard_url = f"https://panther.tail29c7da.ts.net/{self.spec.identifier}/"
+        if not Path(host_report_bin).exists():
+            return dashboard_url
+
+        cmd = [
+            host_report_bin,
+            "--task", self.spec.identifier,
+            "--title", self.spec.title,
+            "--project", self.spec.target_project,
+            "--status", status,
+        ]
+
+        plan_candidates = [
+            Path.home() / "share" / self.spec.target_project / f"{self.spec.identifier}.html",
+            Path.home() / "share" / f"{self.spec.identifier}.html",
+            Path.home() / ".local" / "share" / "agent-reports" / f"{self.spec.identifier}.html",
+        ]
+        for candidate in plan_candidates:
+            if candidate.exists():
+                cmd.extend(["--visual-plan", str(candidate)])
+                break
+
+        brain_dir = ANTIGRAVITY_APP_DATA / "brain"
+        if brain_dir.exists():
+            for folder in sorted(brain_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+                if folder.is_dir():
+                    for md_file in folder.glob("*.md"):
+                        if "plan" in md_file.name.lower():
+                            cmd.extend(["--written-plan", str(md_file)])
+                            break
+                    break
+
+        if self.spec.file_path.exists():
+            cmd.extend(["--spec", str(self.spec.file_path)])
+
+        if self.state.pr_url:
+            cmd.extend(["--pr-url", self.state.pr_url])
+        if self.state.pr_number:
+            cmd.extend(["--pr-number", str(self.state.pr_number)])
+
+        if symboldiff_path and Path(symboldiff_path).exists():
+            cmd.extend(["--symboldiff", str(symboldiff_path)])
+        else:
+            diff_share = Path.home() / "share" / f"symboldiff-{self.spec.target_project}.html"
+            if diff_share.exists():
+                cmd.extend(["--symboldiff", str(diff_share)])
+
+        subprocess.run(cmd, capture_output=True)
+        self.state.visual_plan_url = dashboard_url
+        self.save_state(self.state)
+        return dashboard_url
 
     def publish_tailscale_report(self, report_path: Path, slug: str) -> None:
         host_report_bin = shutil.which("host-report") or str(Path.home() / "bin" / "host-report")

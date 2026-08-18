@@ -55,6 +55,9 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html {
+      height: 100%;
+    }
     body {
       background-color: var(--bg-primary);
       color: var(--text-primary);
@@ -62,6 +65,7 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       font-size: 14px;
       line-height: 1.5;
       height: 100vh;
+      height: 100dvh;
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -78,6 +82,13 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       gap: 16px;
       flex-shrink: 0;
       z-index: 10;
+    }
+
+    .header-main {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
     }
 
     .brand {
@@ -98,6 +109,7 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       align-items: center;
       justify-content: center;
       font-size: 15px;
+      flex-shrink: 0;
     }
     .target-ref {
       font-family: var(--font-mono);
@@ -107,6 +119,10 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       padding: 3px 8px;
       border-radius: 4px;
       border: 1px solid var(--border-subtle);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 260px;
     }
 
     /* Search & Filter Bar */
@@ -168,6 +184,7 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       padding: 2px;
       border-radius: 6px;
       border: 1px solid var(--border-subtle);
+      flex-shrink: 0;
     }
     .filter-btn {
       background: transparent;
@@ -182,6 +199,8 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       align-items: center;
       gap: 5px;
       transition: all 0.15s ease;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
     .filter-btn:hover {
       color: var(--text-primary);
@@ -202,6 +221,7 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
     .key-hints {
       display: flex;
       gap: 6px;
+      flex-shrink: 0;
     }
     .key-badge {
       font-family: var(--font-mono);
@@ -215,6 +235,7 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       display: flex;
       align-items: center;
       gap: 4px;
+      user-select: none;
     }
     .key-badge kbd {
       background: var(--bg-card);
@@ -226,11 +247,53 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       border: 1px solid var(--border-subtle);
     }
 
+    /* Mobile Segmented Switcher Tab Bar */
+    .mobile-tab-bar {
+      display: none;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 6px 12px;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .mobile-tab-btn {
+      flex: 1;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      padding: 7px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--font-sans);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+    .mobile-tab-btn.active {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border-color: var(--border-focus);
+    }
+    .mobile-tab-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      background: rgba(255,255,255,0.1);
+      padding: 1px 5px;
+      border-radius: 10px;
+    }
+
     /* Main Container (Split-View) */
     .app-body {
       display: flex;
       flex-grow: 1;
       overflow: hidden;
+      min-height: 0;
+      position: relative;
     }
 
     /* Left Sidebar: File Tree */
@@ -242,6 +305,7 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
+      min-height: 0;
     }
     .panel-header {
       padding: 10px 16px;
@@ -254,6 +318,7 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-shrink: 0;
     }
     .file-list {
       overflow-y: auto;
@@ -303,6 +368,7 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       display: flex;
       align-items: center;
       gap: 4px;
+      flex-shrink: 0;
     }
     .file-count {
       font-size: 10px;
@@ -320,6 +386,7 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       overflow-y: auto;
       padding: 24px 32px;
       background: var(--bg-primary);
+      min-height: 0;
     }
     .file-section {
       margin-bottom: 32px;
@@ -335,6 +402,7 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       gap: 8px;
       padding-bottom: 6px;
       border-bottom: 1px solid var(--border-subtle);
+      word-break: break-all;
     }
 
     /* Symbol Cards */
@@ -373,16 +441,19 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       font-weight: 600;
       font-size: 13px;
       color: var(--text-primary);
+      word-break: break-word;
     }
     .symbol-meta {
       display: flex;
       align-items: center;
       gap: 8px;
+      flex-shrink: 0;
     }
     .line-number {
       font-family: var(--font-mono);
       font-size: 11px;
       color: var(--text-muted);
+      white-space: nowrap;
     }
 
     /* Badges */
@@ -395,6 +466,7 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       align-items: center;
       gap: 4px;
       text-transform: capitalize;
+      white-space: nowrap;
     }
     .badge-kind {
       font-family: var(--font-mono);
@@ -454,7 +526,8 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       padding: 4px 8px;
       border-radius: 4px;
       margin-bottom: 4px;
-      word-break: break-all;
+      word-break: break-word;
+      white-space: pre-wrap;
     }
     .diff-line:last-child { margin-bottom: 0; }
     .diff-line.old {
@@ -496,7 +569,9 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       border: 1px solid var(--border-subtle);
       border-radius: 10px;
       width: 500px;
-      max-width: 90vw;
+      max-width: 92vw;
+      max-height: 85vh;
+      overflow-y: auto;
       padding: 20px;
       box-shadow: 0 10px 30px rgba(0,0,0,0.5);
     }
@@ -513,6 +588,8 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       color: var(--text-muted);
       cursor: pointer;
       font-size: 18px;
+      padding: 4px 8px;
+      border-radius: 4px;
     }
     .shortcut-table {
       width: 100%;
@@ -547,15 +624,121 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       color: var(--text-muted);
     }
     .empty-icon { font-size: 32px; margin-bottom: 12px; }
+
+    /* Responsive Styles for Mobile and Tablet */
+    @media (max-width: 768px) {
+      header {
+        padding: 10px 12px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      .header-main {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+      }
+      .brand {
+        font-size: 15px;
+        min-width: 0;
+      }
+      .target-ref {
+        max-width: 130px;
+        font-size: 11px;
+      }
+      .controls-bar {
+        flex-direction: column;
+        align-items: stretch;
+        max-width: 100%;
+        gap: 8px;
+      }
+      .search-hint {
+        display: none;
+      }
+      .filter-group {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        width: 100%;
+        padding: 2px;
+      }
+      .filter-group::-webkit-scrollbar {
+        display: none;
+      }
+      .filter-btn {
+        padding: 5px 8px;
+        font-size: 11px;
+      }
+      .key-hints {
+        display: flex;
+      }
+      .mobile-tab-bar {
+        display: flex;
+      }
+      .app-body {
+        flex-direction: column;
+      }
+      .sidebar {
+        display: none;
+        width: 100%;
+        height: 100%;
+        border-right: none;
+      }
+      .sidebar.mobile-active {
+        display: flex;
+      }
+      .content-stage {
+        display: none;
+        width: 100%;
+        height: 100%;
+        padding: 12px 14px;
+      }
+      .content-stage.mobile-active {
+        display: block;
+      }
+      .file-section {
+        margin-bottom: 20px;
+      }
+      .file-section-title {
+        font-size: 12px;
+      }
+      .symbol-header {
+        padding: 8px 10px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+      .symbol-title-area {
+        gap: 6px;
+        width: 100%;
+      }
+      .symbol-name {
+        font-size: 12px;
+      }
+      .signature-diff-box {
+        padding: 8px 10px;
+        font-size: 11px;
+      }
+      .diff-line {
+        font-size: 11px;
+        padding: 3px 6px;
+      }
+    }
   </style>
 </head>
 <body>
   <!-- Header Bar -->
   <header>
-    <div class="brand">
-      <div class="brand-icon">⚡</div>
-      <span>SymbolDiff</span>
-      <span class="target-ref" id="targetRef">${escapeHtml(comparisonTitle)}</span>
+    <div class="header-main">
+      <div class="brand">
+        <div class="brand-icon">⚡</div>
+        <span>SymbolDiff</span>
+        <span class="target-ref" id="targetRef">${escapeHtml(comparisonTitle)}</span>
+      </div>
+      <div class="key-hints">
+        <div class="key-badge" onclick="toggleHelpModal()"><kbd>?</kbd> Shortcuts</div>
+      </div>
     </div>
 
     <!-- Search & Filter Area -->
@@ -574,11 +757,17 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
         <button class="filter-btn" data-filter="deleted" title="Press 5">🔥 Deleted <span class="filter-badge" id="countDeleted">0</span></button>
       </div>
     </div>
-
-    <div class="key-hints">
-      <div class="key-badge" onclick="toggleHelpModal()"><kbd>?</kbd> Shortcuts</div>
-    </div>
   </header>
+
+  <!-- Mobile Segmented Tabs -->
+  <div class="mobile-tab-bar">
+    <button class="mobile-tab-btn" id="tabBtnFiles" onclick="switchMobileView('files')">
+      📄 Files <span class="mobile-tab-badge" id="mobileFileCount">0</span>
+    </button>
+    <button class="mobile-tab-btn active" id="tabBtnSymbols" onclick="switchMobileView('symbols')">
+      ⚡ Symbols <span class="mobile-tab-badge" id="mobileSymbolCount">0</span>
+    </button>
+  </div>
 
   <!-- Main Body Split-View -->
   <div class="app-body">
@@ -592,7 +781,7 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
     </aside>
 
     <!-- Right: Symbol Content Stage -->
-    <main class="content-stage" id="contentStage"></main>
+    <main class="content-stage mobile-active" id="contentStage"></main>
   </div>
 
   <!-- Keyboard Shortcuts Help Modal -->
@@ -687,12 +876,34 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       return true;
     }
 
+    function switchMobileView(view) {
+      currentMobileView = view;
+      const tabFiles = document.getElementById('tabBtnFiles');
+      const tabSymbols = document.getElementById('tabBtnSymbols');
+      const sidebarEl = document.querySelector('.sidebar');
+      const contentEl = document.getElementById('contentStage');
+
+      if (view === 'files') {
+        if (tabFiles) tabFiles.classList.add('active');
+        if (tabSymbols) tabSymbols.classList.remove('active');
+        if (sidebarEl) sidebarEl.classList.add('mobile-active');
+        if (contentEl) contentEl.classList.remove('mobile-active');
+      } else {
+        if (tabFiles) tabFiles.classList.remove('active');
+        if (tabSymbols) tabSymbols.classList.add('active');
+        if (sidebarEl) sidebarEl.classList.remove('mobile-active');
+        if (contentEl) contentEl.classList.add('mobile-active');
+      }
+    }
+
     function renderSidebar() {
       fileListEl.innerHTML = '';
+      let matchingFileCount = 0;
       diffData.files.forEach((file, fIdx) => {
         const matchingSymbols = file.symbols.filter(s => filterMatches(s, file));
         if (matchingSymbols.length === 0 && (activeFilter !== 'all' || searchQuery)) return;
 
+        matchingFileCount++;
         const parts = file.path.split('/');
         const fileName = parts.pop();
         const dirPath = parts.join('/') + (parts.length ? '/' : '');
@@ -703,6 +914,7 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
         item.onclick = () => {
           selectedFileIndex = fIdx;
           renderSidebar();
+          switchMobileView('symbols');
           scrollToSection(fIdx);
         };
 
@@ -719,6 +931,9 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
         \`;
         fileListEl.appendChild(item);
       });
+
+      const mobileFileCountEl = document.getElementById('mobileFileCount');
+      if (mobileFileCountEl) mobileFileCountEl.innerText = matchingFileCount;
     }
 
     function renderContent() {
@@ -808,6 +1023,9 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
         contentStageEl.appendChild(section);
       });
 
+      const mobileSymbolCountEl = document.getElementById('mobileSymbolCount');
+      if (mobileSymbolCountEl) mobileSymbolCountEl.innerText = totalVisible;
+
       if (totalVisible === 0) {
         contentStageEl.innerHTML = \`
           <div class="empty-state">
@@ -820,8 +1038,10 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
     }
 
     function scrollToSection(fIdx) {
-      const el = document.getElementById(\`section-\${fIdx}\`);
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      requestAnimationFrame(() => {
+        const el = document.getElementById(\`section-\${fIdx}\`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
     }
 
     function scrollToFocusedSymbol() {
