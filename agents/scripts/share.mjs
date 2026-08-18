@@ -538,6 +538,20 @@ function updateIndexHtml() {
         .replace(/'/g, '&#039;');
     }
 
+    function getDateBucket(timestamp) {
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const startOfYesterday = startOfToday - 86400000;
+      const startOf7Days = startOfToday - (6 * 86400000);
+      const startOf30Days = startOfToday - (29 * 86400000);
+
+      if (timestamp >= startOfToday) return 'Today';
+      if (timestamp >= startOfYesterday) return 'Yesterday';
+      if (timestamp >= startOf7Days) return 'Past 7 Days';
+      if (timestamp >= startOf30Days) return 'Past 30 Days';
+      return 'Older';
+    }
+
     function setGrouping(mode) {
       currentGroup = mode;
       localStorage.setItem('task_group', mode);
@@ -562,12 +576,26 @@ function updateIndexHtml() {
       }
 
       if (currentGroup === 'recent') {
-        const listHtml = filtered.map(t => \`
-          <li class="link-item">
-            <a href="./\${t.slug}/" class="bare-link">\${escapeHtml(t.title)}</a>
-          </li>
+        const buckets = ['Today', 'Yesterday', 'Past 7 Days', 'Past 30 Days', 'Older'];
+        const groups = {};
+        for (const t of filtered) {
+          const bucket = getDateBucket(t.mtime);
+          if (!groups[bucket]) groups[bucket] = [];
+          groups[bucket].push(t);
+        }
+        const html = buckets.filter(b => groups[b] && groups[b].length > 0).map(bucket => \`
+          <div class="group-section">
+            <div class="group-header">\${escapeHtml(bucket)} (\${groups[bucket].length})</div>
+            <ul class="link-list">
+              \${groups[bucket].map(t => \`
+                <li class="link-item">
+                  <a href="./\${t.slug}/" class="bare-link">\${escapeHtml(t.title)}</a>
+                </li>
+              \`).join('')}
+            </ul>
+          </div>
         \`).join('');
-        content.innerHTML = \`<ul class="link-list">\${listHtml}</ul>\`;
+        content.innerHTML = html;
       } else if (currentGroup === 'repo') {
         const groups = {};
         for (const t of filtered) {
