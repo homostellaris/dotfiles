@@ -43,7 +43,11 @@ chmod +x "$DIR/scripts/build.py"
 ln -nsf "$DIR/scripts/share.mjs" "$HOME/bin/share"
 ln -nsf "$DIR/scripts/share.mjs" "$HOME/bin/host-report"
 ln -nsf "$DIR/scripts/share.mjs" "$HOME/bin/serve-report"
-chmod +x "$DIR/scripts/share.mjs"
+# Deploy House Style assets to ~/share/_style/
+mkdir -p "$HOME/share/_style"
+cp "$DIR/styles/house-style.css" "$HOME/share/_style/house-style.css"
+cp "$DIR/styles/house-style.js" "$HOME/share/_style/house-style.js"
+
 
 
 

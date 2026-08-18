@@ -110,11 +110,11 @@ function generateTaskDashboardHtml(meta) {
     timeStyle: 'short'
   });
 
-  let statusClass = 'status-plan';
-  if (meta.status === 'IN_PROGRESS' || meta.status === 'IMPLEMENTING') statusClass = 'status-progress';
-  if (meta.status === 'PR_OPEN' || meta.status === 'AWAITING_PR_REVIEW') statusClass = 'status-pr';
-  if (meta.status === 'VERIFIED' || meta.status === 'APPROVED') statusClass = 'status-verified';
-  if (meta.status === 'DEPLOYED' || meta.status === 'COMPLETED') statusClass = 'status-deployed';
+  let statusBadgeClass = 'badge-default';
+  if (meta.status === 'IN_PROGRESS' || meta.status === 'IMPLEMENTING') statusBadgeClass = 'badge-warning';
+  if (meta.status === 'PR_OPEN' || meta.status === 'AWAITING_PR_REVIEW') statusBadgeClass = 'badge-purple';
+  if (meta.status === 'VERIFIED' || meta.status === 'APPROVED') statusBadgeClass = 'badge-success';
+  if (meta.status === 'DEPLOYED' || meta.status === 'COMPLETED') statusBadgeClass = 'badge-success';
 
   const hasVisualPlan = fs.existsSync(path.join(REPORTS_DIR, meta.specId, 'visual-plan.html'));
   const hasWrittenPlan = fs.existsSync(path.join(REPORTS_DIR, meta.specId, 'plan.html')) || fs.existsSync(path.join(REPORTS_DIR, meta.specId, 'plan.md'));
@@ -144,474 +144,170 @@ function generateTaskDashboardHtml(meta) {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg: #090d16;
-      --surface: #101726;
-      --surface-border: #1e293b;
-      --surface-hover: #172238;
-      --text: #f1f5f9;
-      --text-muted: #94a3b8;
-      --accent: #38bdf8;
-      --accent-soft: rgba(56, 189, 248, 0.12);
-      --success: #34d399;
-      --warning: #fbbf24;
-      --purple: #c084fc;
-      --font-sans: 'Inter', system-ui, sans-serif;
-      --font-mono: 'JetBrains Mono', monospace;
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-
-    body {
-      background-color: var(--bg);
-      color: var(--text);
-      font-family: var(--font-sans);
-      line-height: 1.5;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-
-    header {
-      background: rgba(16, 23, 38, 0.95);
-      border-bottom: 1px solid var(--surface-border);
-      padding: 1rem 1.25rem;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      backdrop-filter: blur(12px);
-    }
-
-    .header-container {
-      max-width: 1200px;
-      margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
-
-    @media (min-width: 768px) {
-      header { padding: 1.25rem 2rem; }
-      .header-container {
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: center;
-      }
-    }
-
-    .meta-row {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-      margin-top: 0.25rem;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-      padding: 0.2rem 0.55rem;
-      border-radius: 9999px;
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      font-family: var(--font-mono);
-    }
-
-    .status-plan { background: rgba(56, 189, 248, 0.15); color: var(--accent); border: 1px solid rgba(56, 189, 248, 0.3); }
-    .status-progress { background: rgba(251, 191, 36, 0.15); color: var(--warning); border: 1px solid rgba(251, 191, 36, 0.3); }
-    .status-pr { background: rgba(192, 132, 252, 0.15); color: var(--purple); border: 1px solid rgba(192, 132, 252, 0.3); }
-    .status-verified { background: rgba(52, 211, 153, 0.15); color: var(--success); border: 1px solid rgba(52, 211, 153, 0.3); }
-    .status-deployed { background: rgba(52, 211, 153, 0.25); color: #fff; border: 1px solid var(--success); }
-
-    .tag-pill {
-      font-size: 0.75rem;
-      padding: 0.15rem 0.5rem;
-      background: var(--surface);
-      border: 1px solid var(--surface-border);
-      border-radius: 6px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-    }
-
-    h1 {
-      font-size: 1.25rem;
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      color: #fff;
-      margin-top: 0.1rem;
-    }
-
-    @media (min-width: 768px) {
-      h1 { font-size: 1.5rem; }
-    }
-
-    .main-nav {
-      max-width: 1200px;
-      width: 100%;
-      margin: 0 auto;
-      padding: 0.75rem 1rem 0;
-      display: flex;
-      gap: 0.4rem;
-      overflow-x: auto;
-      scrollbar-width: none;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    .main-nav::-webkit-scrollbar { display: none; }
-
-    .nav-tab {
-      background: var(--surface);
-      border: 1px solid var(--surface-border);
-      color: var(--text-muted);
-      padding: 0.5rem 0.9rem;
-      border-radius: 8px;
-      font-size: 0.82rem;
-      font-weight: 600;
-      cursor: pointer;
-      white-space: nowrap;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      text-decoration: none;
-      transition: all 0.15s ease;
-    }
-
-    .nav-tab:hover {
-      background: var(--surface-hover);
-      color: #fff;
-    }
-
-    .nav-tab.active {
-      background: #1e293b;
-      color: #fff;
-      border-color: var(--accent);
-      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
-    }
-
-    .content-container {
-      max-width: 1200px;
-      width: 100%;
-      margin: 1rem auto 3rem;
-      padding: 0 1rem;
-      flex-grow: 1;
-    }
-
-    .tab-content {
-      display: none;
-      animation: fadeIn 0.15s ease-in-out;
-    }
-
-    .tab-content.active {
-      display: block;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(3px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--surface-border);
-      border-radius: 12px;
-      padding: 1.25rem;
-      margin-bottom: 1.25rem;
-    }
-
-    @media (min-width: 768px) {
-      .card { padding: 1.75rem; }
-    }
-
-    .card h2 {
-      font-size: 1.15rem;
-      font-weight: 700;
-      color: #fff;
-      margin-bottom: 0.75rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 1rem;
-    }
-
-    @media (min-width: 768px) {
-      .grid-2 { grid-template-columns: repeat(2, 1fr); gap: 1.25rem; }
-    }
-
-    .grid-3 {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 1rem;
-    }
-
-    @media (min-width: 768px) {
-      .grid-3 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; }
-    }
-
-    .action-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: var(--accent);
-      color: #090d16;
-      font-weight: 700;
-      font-size: 0.85rem;
-      padding: 0.6rem 1.1rem;
-      border-radius: 8px;
-      text-decoration: none;
-      transition: all 0.15s ease;
-      width: fit-content;
-    }
-
-    .action-btn:hover {
-      opacity: 0.9;
-      transform: translateY(-1px);
-    }
-
-    .action-btn.secondary {
-      background: var(--surface);
-      border: 1px solid var(--surface-border);
-      color: var(--text);
-    }
-
-    .action-btn.secondary:hover {
-      background: var(--surface-hover);
-      border-color: var(--accent);
-    }
-
-    .tab-iframe {
-      width: 100%;
-      height: 80vh;
-      min-height: 600px;
-      border: 1px solid var(--surface-border);
-      border-radius: 12px;
-      background: #090d16;
-    }
-
-    .prose {
-      font-size: 0.9rem;
-      line-height: 1.65;
-      color: #cbd5e1;
-    }
-
-    .prose h1, .prose h2, .prose h3 {
-      color: #fff;
-      margin: 1.25rem 0 0.5rem;
-    }
-
-    .prose code {
-      font-family: var(--font-mono);
-      background: #0b111e;
-      padding: 0.15rem 0.35rem;
-      border-radius: 4px;
-      font-size: 0.82rem;
-      color: var(--accent);
-      border: 1px solid rgba(255,255,255,0.05);
-    }
-
-    .prose pre.code-block {
-      background: #050811;
-      border: 1px solid var(--surface-border);
-      border-radius: 8px;
-      padding: 1rem;
-      overflow-x: auto;
-      margin: 0.75rem 0;
-    }
-
-    .prose pre.code-block code {
-      background: transparent;
-      padding: 0;
-      border: none;
-      color: #e2e8f0;
-    }
-
-    .prose ul {
-      padding-left: 1.25rem;
-      margin: 0.5rem 0;
-    }
-
-    .prose li {
-      margin-bottom: 0.35rem;
-    }
-
-    .prose .alert {
-      padding: 0.75rem 1rem;
-      border-radius: 8px;
-      margin: 0.75rem 0;
-      border-left: 4px solid;
-    }
-
-    .prose .alert-note { background: rgba(56,189,248,0.1); border-color: var(--accent); }
-    .prose .alert-tip { background: rgba(52,211,153,0.1); border-color: var(--success); }
-    .prose .alert-important { background: rgba(192,132,252,0.1); border-color: var(--purple); }
-    .prose .alert-warning { background: rgba(251,191,36,0.1); border-color: var(--warning); }
-  </style>
+  <link rel="stylesheet" href="/_style/house-style.css">
+  <script src="/_style/house-style.js" defer></script>
 </head>
-<body>
+<body class="app-shell">
 
-  <header>
+  <header class="header-shell">
     <div class="header-container">
-      <div>
-        <div class="meta-row">
-          <span class="badge ${statusClass}">${status}</span>
-          <span class="tag-pill">📁 ${project}</span>
-          <span class="tag-pill">🔑 ${specId}</span>
+      <div class="brand-row">
+        <div class="brand-icon">📁</div>
+        <div>
+          <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <span class="badge ${statusBadgeClass}">${status}</span>
+            <span class="badge badge-secondary">${project}</span>
+            <span class="badge badge-outline">${specId}</span>
+          </div>
+          <h1 style="margin-top: 0.2rem;">${title}</h1>
         </div>
-        <h1>${title}</h1>
       </div>
       <div>
-        <a href="../index.html" style="color: var(--accent); text-decoration: none; font-size: 0.82rem; font-weight: 600;">← All Tasks & Hub</a>
+        <a href="../index.html" class="btn btn-secondary btn-sm">← Back to Hub</a>
       </div>
     </div>
   </header>
 
-  <nav class="main-nav">
-    <button class="nav-tab active" onclick="switchTab('overview')">🧭 Overview</button>
-    ${hasVisualPlan ? `<button class="nav-tab" onclick="switchTab('visual-plan')">🎨 Visual Plan</button>` : ''}
-    ${hasWrittenPlan ? `<button class="nav-tab" onclick="switchTab('written-plan')">📝 Written Plan</button>` : ''}
-    ${hasSymbolDiff || prUrl ? `<button class="nav-tab" onclick="switchTab('pr')">📌 PR & Diffs</button>` : ''}
-    ${hasSpec ? `<button class="nav-tab" onclick="switchTab('spec')">📋 Spec Source</button>` : ''}
-  </nav>
+  <main class="container">
 
-  <main class="content-container">
-
-    <!-- OVERVIEW TAB -->
-    <div id="tab-overview" class="tab-content active">
-      <div class="grid-2">
-        
-        <div class="card">
-          <h2>Task Summary</h2>
-          <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 1rem;">
-            Autonomous feature delivery tracking for <strong>${title}</strong>.
-          </p>
-
-          <div style="display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.85rem;">
-            <div><strong>Spec Identifier:</strong> <code>${specId}</code></div>
-            <div><strong>Target Repository:</strong> <code>~/code/homostellaris/${project}</code></div>
-            <div><strong>Isolated Worktree:</strong> <code>.worktrees/${specId}</code></div>
-            <div><strong>Feature Branch:</strong> <code>${specId}</code></div>
-            <div><strong>Last Updated:</strong> ${updatedAt}</div>
-          </div>
-
-          <div style="display: flex; gap: 0.6rem; margin-top: 1.25rem; flex-wrap: wrap;">
-            <a href="https://wa.me/447812754124?text=approve%20${specId}" class="action-btn" target="_blank">
-              💬 Approve on WhatsApp
-            </a>
-            ${prUrl ? `<a href="${prUrl}" class="action-btn secondary" target="_blank">View GitHub PR ↗</a>` : ''}
-          </div>
-        </div>
-
-        <div class="card">
-          <h2>Artifacts in Folder</h2>
-          <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-            ${hasVisualPlan ? `
-              <div style="display: flex; justify-content: space-between; align-items: center; background: #0b111e; padding: 0.6rem 0.85rem; border-radius: 8px; border: 1px solid var(--surface-border);">
-                <div>
-                  <div style="font-weight: 600; font-size: 0.85rem; color: #fff;">🎨 Visual Plan</div>
-                  <div style="font-size: 0.75rem; color: var(--text-muted);">Interactive UI wireframes & architecture</div>
-                </div>
-                <button onclick="switchTab('visual-plan')" class="action-btn secondary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">View</button>
-              </div>` : ''}
-
-            ${hasWrittenPlan ? `
-              <div style="display: flex; justify-content: space-between; align-items: center; background: #0b111e; padding: 0.6rem 0.85rem; border-radius: 8px; border: 1px solid var(--surface-border);">
-                <div>
-                  <div style="font-weight: 600; font-size: 0.85rem; color: #fff;">📝 Written Plan</div>
-                  <div style="font-size: 0.75rem; color: var(--text-muted);">Technical contract, file map & phases</div>
-                </div>
-                <button onclick="switchTab('written-plan')" class="action-btn secondary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">View</button>
-              </div>` : ''}
-
-            ${hasSymbolDiff ? `
-              <div style="display: flex; justify-content: space-between; align-items: center; background: #0b111e; padding: 0.6rem 0.85rem; border-radius: 8px; border: 1px solid var(--surface-border);">
-                <div>
-                  <div style="font-weight: 600; font-size: 0.85rem; color: #fff;">⚡ SymbolDiff Review</div>
-                  <div style="font-size: 0.75rem; color: var(--text-muted);">Type and function signature diffs</div>
-                </div>
-                <button onclick="switchTab('pr')" class="action-btn secondary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">View</button>
-              </div>` : ''}
-
-            ${hasSpec ? `
-              <div style="display: flex; justify-content: space-between; align-items: center; background: #0b111e; padding: 0.6rem 0.85rem; border-radius: 8px; border: 1px solid var(--surface-border);">
-                <div>
-                  <div style="font-weight: 600; font-size: 0.85rem; color: #fff;">📋 StarFocus Spec</div>
-                  <div style="font-size: 0.75rem; color: var(--text-muted);">Obsidian todo specification</div>
-                </div>
-                <button onclick="switchTab('spec')" class="action-btn secondary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">View</button>
-              </div>` : ''}
-          </div>
-        </div>
-
+    <div data-tabs class="tabs-wrapper">
+      <div class="tabs-list">
+        <button class="tabs-trigger active" data-tab-target="tab-overview">🧭 Overview</button>
+        ${hasVisualPlan ? `<button class="tabs-trigger" data-tab-target="tab-visual-plan">🎨 Visual Plan</button>` : ''}
+        ${hasWrittenPlan ? `<button class="tabs-trigger" data-tab-target="tab-written-plan">📝 Written Plan</button>` : ''}
+        ${hasSymbolDiff || prUrl ? `<button class="tabs-trigger" data-tab-target="tab-pr">📌 PR & Diffs</button>` : ''}
+        ${hasSpec ? `<button class="tabs-trigger" data-tab-target="tab-spec">📋 Spec Source</button>` : ''}
       </div>
+
+      <!-- OVERVIEW TAB -->
+      <div class="tabs-content active" data-tab-content="tab-overview" id="tab-overview" style="margin-top: 1.25rem;">
+        <div class="grid-2">
+          
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Task Summary</h3>
+              <div class="card-description">Autonomous feature delivery for <strong>${title}</strong></div>
+            </div>
+            <div class="card-content">
+              <div style="display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.875rem;">
+                <div><strong>Spec Identifier:</strong> <code>${specId}</code></div>
+                <div><strong>Target Repository:</strong> <code>~/code/homostellaris/${project}</code></div>
+                <div><strong>Isolated Worktree:</strong> <code>.worktrees/${specId}</code></div>
+                <div><strong>Feature Branch:</strong> <code>${specId}</code></div>
+                <div><strong>Last Updated:</strong> ${updatedAt}</div>
+              </div>
+
+              <div style="display: flex; gap: 0.6rem; margin-top: 1.25rem; flex-wrap: wrap;">
+                <a href="https://wa.me/447812754124?text=approve%20${specId}" class="btn btn-primary" target="_blank">
+                  💬 Approve on WhatsApp
+                </a>
+                ${prUrl ? `<a href="${prUrl}" class="btn btn-secondary" target="_blank">View GitHub PR ↗</a>` : ''}
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Task Deliverables</h3>
+              <div class="card-description">Artifacts tracked in this task bundle</div>
+            </div>
+            <div class="card-content">
+              <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                ${hasVisualPlan ? `
+                  <div class="card" style="padding: 0.75rem 1rem; flex-direction: row; justify-content: space-between; align-items: center; background: #0b111e;">
+                    <div>
+                      <div style="font-weight: 600; font-size: 0.875rem; color: #fff;">🎨 Visual Plan</div>
+                      <div style="font-size: 0.75rem; color: var(--muted-foreground);">Interactive UI wireframes & architecture</div>
+                    </div>
+                    <a href="./visual-plan.html" class="btn btn-secondary btn-sm" target="_blank">Open</a>
+                  </div>` : ''}
+
+                ${hasWrittenPlan ? `
+                  <div class="card" style="padding: 0.75rem 1rem; flex-direction: row; justify-content: space-between; align-items: center; background: #0b111e;">
+                    <div>
+                      <div style="font-weight: 600; font-size: 0.875rem; color: #fff;">📝 Written Plan</div>
+                      <div style="font-size: 0.75rem; color: var(--muted-foreground);">Technical contract & implementation phases</div>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="document.querySelector('[data-tab-target=\\'tab-written-plan\\']')?.click()">View</button>
+                  </div>` : ''}
+
+                ${hasSymbolDiff ? `
+                  <div class="card" style="padding: 0.75rem 1rem; flex-direction: row; justify-content: space-between; align-items: center; background: #0b111e;">
+                    <div>
+                      <div style="font-weight: 600; font-size: 0.875rem; color: #fff;">⚡ SymbolDiff Review</div>
+                      <div style="font-size: 0.75rem; color: var(--muted-foreground);">Type & function signature diffs</div>
+                    </div>
+                    <a href="./symboldiff.html" class="btn btn-secondary btn-sm" target="_blank">Open</a>
+                  </div>` : ''}
+
+                ${hasSpec ? `
+                  <div class="card" style="padding: 0.75rem 1rem; flex-direction: row; justify-content: space-between; align-items: center; background: #0b111e;">
+                    <div>
+                      <div style="font-weight: 600; font-size: 0.875rem; color: #fff;">📋 StarFocus Spec</div>
+                      <div style="font-size: 0.75rem; color: var(--muted-foreground);">Original Obsidian todo spec</div>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="document.querySelector('[data-tab-target=\\'tab-spec\\']')?.click()">View</button>
+                  </div>` : ''}
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- VISUAL PLAN TAB -->
+      ${hasVisualPlan ? `
+      <div class="tabs-content" data-tab-content="tab-visual-plan" id="tab-visual-plan" style="margin-top: 1.25rem;">
+        <div class="card" style="padding: 0.75rem;">
+          <div class="card-header-row" style="padding: 0.25rem 0.5rem 0.75rem;">
+            <h3 class="card-title">🎨 Interactive Visual Plan</h3>
+            <a href="./visual-plan.html" target="_blank" class="btn btn-secondary btn-sm">Open Full Page ↗</a>
+          </div>
+          <iframe src="./visual-plan.html" class="tab-iframe" title="Visual Plan"></iframe>
+        </div>
+      </div>` : ''}
+
+      <!-- WRITTEN PLAN TAB -->
+      ${hasWrittenPlan ? `
+      <div class="tabs-content" data-tab-content="tab-written-plan" id="tab-written-plan" style="margin-top: 1.25rem;">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">📝 Written Technical Implementation Plan</h3>
+          </div>
+          <div class="card-content">
+            ${writtenPlanContent}
+          </div>
+        </div>
+      </div>` : ''}
+
+      <!-- PR & DIFF TAB -->
+      ${hasSymbolDiff || prUrl ? `
+      <div class="tabs-content" data-tab-content="tab-pr" id="tab-pr" style="margin-top: 1.25rem;">
+        <div class="card" style="padding: 0.75rem;">
+          <div class="card-header-row" style="padding: 0.25rem 0.5rem 0.75rem;">
+            <h3 class="card-title">⚡ Pull Request & SymbolDiff Review</h3>
+            ${prUrl ? `<a href="${prUrl}" target="_blank" class="btn btn-primary btn-sm">Open PR #${prNumber || ''} on GitHub ↗</a>` : ''}
+          </div>
+          ${hasSymbolDiff ? `<iframe src="./symboldiff.html" class="tab-iframe" title="Symbol Diff"></iframe>` : `<p style="padding: 1rem;">Pull request opened at <a href="${prUrl}" target="_blank">${prUrl}</a></p>`}
+        </div>
+      </div>` : ''}
+
+      <!-- SPEC TAB -->
+      ${hasSpec ? `
+      <div class="tabs-content" data-tab-content="tab-spec" id="tab-spec" style="margin-top: 1.25rem;">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">📋 StarFocus Obsidian Specification</h3>
+          </div>
+          <div class="card-content">
+            ${specContent}
+          </div>
+        </div>
+      </div>` : ''}
+
     </div>
 
-    <!-- VISUAL PLAN TAB -->
-    ${hasVisualPlan ? `
-    <div id="tab-visual-plan" class="tab-content">
-      <div class="card" style="padding: 0.75rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; padding: 0 0.5rem;">
-          <h2 style="margin: 0; font-size: 1rem;">🎨 Interactive Visual Plan</h2>
-          <a href="./visual-plan.html" target="_blank" class="action-btn secondary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">Open Full Page ↗</a>
-        </div>
-        <iframe src="./visual-plan.html" class="tab-iframe" title="Visual Plan"></iframe>
-      </div>
-    </div>` : ''}
-
-    <!-- WRITTEN PLAN TAB -->
-    ${hasWrittenPlan ? `
-    <div id="tab-written-plan" class="tab-content">
-      <div class="card">
-        <h2>📝 Written Technical Implementation Plan</h2>
-        <div class="prose">
-          ${writtenPlanContent}
-        </div>
-      </div>
-    </div>` : ''}
-
-    <!-- PR & DIFF TAB -->
-    ${hasSymbolDiff || prUrl ? `
-    <div id="tab-pr" class="tab-content">
-      <div class="card" style="padding: 0.75rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; padding: 0 0.5rem;">
-          <h2 style="margin: 0; font-size: 1rem;">⚡ Pull Request & SymbolDiff Review</h2>
-          ${prUrl ? `<a href="${prUrl}" target="_blank" class="action-btn" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">Open PR #${prNumber || ''} on GitHub ↗</a>` : ''}
-        </div>
-        ${hasSymbolDiff ? `<iframe src="./symboldiff.html" class="tab-iframe" title="Symbol Diff"></iframe>` : `<p style="padding: 1rem; color: var(--text-muted);">Pull request opened at <a href="${prUrl}" target="_blank">${prUrl}</a></p>`}
-      </div>
-    </div>` : ''}
-
-    <!-- SPEC TAB -->
-    ${hasSpec ? `
-    <div id="tab-spec" class="tab-content">
-      <div class="card">
-        <h2>📋 StarFocus Obsidian Specification</h2>
-        <div class="prose">
-          ${specContent}
-        </div>
-      </div>
-    </div>` : ''}
-
   </main>
-
-  <script>
-    function switchTab(tabId) {
-      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-      document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
-      const activeContent = document.getElementById('tab-' + tabId);
-      if (activeContent) activeContent.classList.add('active');
-
-      const matchingButton = Array.from(document.querySelectorAll('.nav-tab')).find(b => b.getAttribute('onclick')?.includes(tabId));
-      if (matchingButton) matchingButton.classList.add('active');
-    }
-  </script>
 </body>
 </html>`;
 }

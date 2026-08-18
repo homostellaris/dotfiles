@@ -17,13 +17,14 @@ Cypress tests should be organised such that they mirror the route they are testi
 
 - **Strict Rule**: Never commit or push changes directly to default branches (`master`, `main`, `develop`) under any circumstances unless explicitly requested by the user in the current session. Always develop on a separate feature branch and raise a PR.
 
-# Tailscale Artifact & Dashboard Sharing (`share`)
+# House Style & UI Component System
 
-Share HTML reports, visual plans, symbol diffs, and multi-file task dashboards on your private Tailscale network:
-- **Share File**: `share <file.html> [--name <slug>]`
-- **Share Task Bundle**: `share --task <spec_id> [--title "..." --visual-plan <file> --written-plan <file> --spec <file> --pr-url <url>]`
-- **Reports Hub**: All shared artifacts live at `~/share/` and are indexed at `https://panther.tail29c7da.ts.net/`.
-- **Aliases**: `host-report`, `serve-report`.
+Whenever an agent builds web pages, dashboards, visual plans, prototypes, or HTML artifacts to share on Tailscale:
+- **Mandatory Component Library**: Link `/_style/house-style.css` and `/_style/house-style.js`.
+- **Component Primitives**: Always use standardized Shadcn HTML classes (`.card`, `.card-header`, `.card-title`, `.btn`, `.btn-primary`, `.badge`, `[data-tabs]`, `.table-container`, `[data-accordion]`).
+- **Mobile First**: Fluid containers, touch-scrollable tabs (`.tabs-list`), sticky header shells (`.header-shell`), and dark mode native colors.
+- **Reference Catalog**: Full copy-paste examples and markup patterns are documented in [`agents/styles/COMPONENTS.md`](file:///home/openclaw/code/homostellaris/dotfiles/agents/styles/COMPONENTS.md).
+
 
 # Agentic Build Orchestrator (`build`)
 
