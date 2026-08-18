@@ -355,7 +355,7 @@ function updateIndexHtml() {
       const metaPath = path.join(folderPath, 'metadata.json');
       if (!fs.existsSync(indexPath)) return null;
 
-      let meta = { specId: d.name, title: d.name, project: 'starfocus', status: 'IN_PROGRESS' };
+      let meta = { specId: d.name, title: d.name, project: 'starfocus', status: 'PLAN REVIEW' };
       if (fs.existsSync(metaPath)) {
         try { meta = { ...meta, ...JSON.parse(fs.readFileSync(metaPath, 'utf-8')) }; } catch {}
       }
@@ -364,42 +364,17 @@ function updateIndexHtml() {
       return {
         slug: d.name,
         title: meta.title || d.name,
-        project: meta.project || '',
-        status: meta.status || 'IN_PROGRESS',
-        mtime: stat.mtime,
+        project: meta.project || 'other',
+        status: meta.status || 'PLAN REVIEW',
+        mtime: stat.mtime.getTime(),
+        timeAgo: formatTimeAgo(stat.mtime),
+        fullDate: stat.mtime.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }),
       };
     })
     .filter(Boolean)
     .sort((a, b) => b.mtime - a.mtime);
 
-  const listRows = taskFolders.map(item => {
-    const timeAgo = formatTimeAgo(item.mtime);
-    const fullDate = item.mtime.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
-
-    let badgeHtml = '';
-    if (item.status) {
-      let badgeClass = 'badge-default';
-      if (item.status === 'IN_PROGRESS') badgeClass = 'badge-warning';
-      if (item.status === 'PR_OPEN') badgeClass = 'badge-purple';
-      if (item.status === 'VERIFIED' || item.status === 'DEPLOYED') badgeClass = 'badge-success';
-      badgeHtml = `<span class="badge ${badgeClass}">${escapeHtml(item.status)}</span>`;
-    }
-
-    const tagHtml = item.project ? `<span class="tag">${escapeHtml(item.project)}</span>` : '';
-
-    return `
-      <li class="item-row">
-        <div class="item-left">
-          <a class="item-link" href="./${item.slug}/">${escapeHtml(item.title)}</a>
-          ${tagHtml}
-        </div>
-        <div class="item-right">
-          ${badgeHtml}
-          <span class="item-time" title="${fullDate}">${timeAgo}</span>
-        </div>
-      </li>
-    `;
-  }).join('\n');
+  const tasksJson = JSON.stringify(taskFolders);
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -418,9 +393,6 @@ function updateIndexHtml() {
       --text: #f8fafc;
       --text-muted: #64748b;
       --accent: #38bdf8;
-      --success: #34d399;
-      --warning: #fbbf24;
-      --purple: #c084fc;
       --font-sans: 'Inter', system-ui, sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
     }
@@ -439,8 +411,8 @@ function updateIndexHtml() {
       width: 100%;
       max-width: 680px;
     }
-    .filter-box {
-      margin-bottom: 16px;
+    .controls {
+      margin-bottom: 20px;
     }
     .filter-input {
       width: 100%;
@@ -461,87 +433,76 @@ function updateIndexHtml() {
     .filter-input::placeholder {
       color: var(--text-muted);
     }
-    .item-list {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      overflow: hidden;
-      background: var(--surface);
-    }
-    .item-row {
+    .group-bar {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--border);
-      gap: 12px;
-      transition: background 0.1s ease;
+      gap: 6px;
+      margin-top: 10px;
     }
-    .item-row:last-child {
-      border-bottom: none;
-    }
-    .item-row:hover {
-      background: #162238;
-    }
-    .item-left {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-      overflow: hidden;
-    }
-    .item-link {
-      font-weight: 500;
-      color: var(--accent);
-      text-decoration: none;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .item-link:hover {
-      text-decoration: underline;
-    }
-    .tag {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--text-muted);
-      background: rgba(255, 255, 255, 0.04);
-      padding: 1px 6px;
-      border-radius: 4px;
-      border: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-    .item-right {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-shrink: 0;
-    }
-    .badge {
-      font-family: var(--font-mono);
-      font-size: 10px;
-      font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-    .badge-default { background: rgba(56, 189, 248, 0.15); color: var(--accent); }
-    .badge-warning { background: rgba(251, 191, 36, 0.15); color: var(--warning); }
-    .badge-purple { background: rgba(192, 132, 252, 0.15); color: var(--purple); }
-    .badge-success { background: rgba(52, 211, 153, 0.15); color: var(--success); }
-    .item-time {
-      font-family: var(--font-mono);
+    .group-label {
       font-size: 12px;
       color: var(--text-muted);
-      min-width: 55px;
-      text-align: right;
+      margin-right: 2px;
+    }
+    .group-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: var(--font-sans);
+      cursor: pointer;
+      transition: all 0.1s ease;
+    }
+    .group-btn:hover {
+      color: var(--text);
+      border-color: #334155;
+    }
+    .group-btn.active {
+      background: #1e293b;
+      color: #fff;
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+    .link-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .link-item {
+      border-bottom: 1px solid var(--border);
+    }
+    .bare-link {
+      color: var(--accent);
+      text-decoration: none;
+      display: block;
+      padding: 11px 0;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.4;
+      word-break: break-word;
+      transition: color 0.1s ease;
+    }
+    .bare-link:hover {
+      text-decoration: underline;
+    }
+    .group-section {
+      margin-bottom: 24px;
+    }
+    .group-header {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 4px;
     }
     .empty {
-      padding: 32px;
-      text-align: center;
+      padding: 32px 0;
       color: var(--text-muted);
       font-size: 13px;
     }
@@ -549,23 +510,124 @@ function updateIndexHtml() {
 </head>
 <body>
   <div class="wrapper">
-    <div class="filter-box">
+    <div class="controls">
       <input type="text" id="filterInput" class="filter-input" placeholder="Search tasks..." autofocus autocomplete="off">
+      <div class="group-bar">
+        <span class="group-label">Group:</span>
+        <button class="group-btn" data-group="recent" onclick="setGrouping('recent')">Last Updated</button>
+        <button class="group-btn" data-group="repo" onclick="setGrouping('repo')">Repo</button>
+        <button class="group-btn" data-group="status" onclick="setGrouping('status')">Status</button>
+      </div>
     </div>
 
-    <ul class="item-list" id="itemList">
-      ${listRows || '<li class="empty">No tasks found.</li>'}
-    </ul>
+    <div id="content"></div>
   </div>
 
   <script>
+    const tasks = ${tasksJson};
+    let currentGroup = localStorage.getItem('task_group') || 'recent';
+    let searchQuery = '';
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function setGrouping(mode) {
+      currentGroup = mode;
+      localStorage.setItem('task_group', mode);
+      render();
+    }
+
+    function render() {
+      const content = document.getElementById('content');
+      const q = searchQuery.toLowerCase().trim();
+
+      const filtered = tasks.filter(t =>
+        !q ||
+        t.title.toLowerCase().includes(q) ||
+        t.slug.toLowerCase().includes(q) ||
+        t.project.toLowerCase().includes(q) ||
+        t.status.toLowerCase().includes(q)
+      );
+
+      if (filtered.length === 0) {
+        content.innerHTML = '<div class="empty">No matching tasks found.</div>';
+        return;
+      }
+
+      if (currentGroup === 'recent') {
+        const listHtml = filtered.map(t => \`
+          <li class="link-item">
+            <a href="./\${t.slug}/" class="bare-link">\${escapeHtml(t.title)}</a>
+          </li>
+        \`).join('');
+        content.innerHTML = \`<ul class="link-list">\${listHtml}</ul>\`;
+      } else if (currentGroup === 'repo') {
+        const groups = {};
+        for (const t of filtered) {
+          const k = t.project || 'other';
+          if (!groups[k]) groups[k] = [];
+          groups[k].push(t);
+        }
+        const html = Object.keys(groups).sort().map(repo => \`
+          <div class="group-section">
+            <div class="group-header">\${escapeHtml(repo)} (\${groups[repo].length})</div>
+            <ul class="link-list">
+              \${groups[repo].map(t => \`
+                <li class="link-item">
+                  <a href="./\${t.slug}/" class="bare-link">\${escapeHtml(t.title)}</a>
+                </li>
+              \`).join('')}
+            </ul>
+          </div>
+        \`).join('');
+        content.innerHTML = html;
+      } else if (currentGroup === 'status') {
+        const statusOrder = ['PLAN REVIEW', 'IN_PROGRESS', 'PR_OPEN', 'VERIFIED', 'DEPLOYED', 'COMPLETED'];
+        const groups = {};
+        for (const t of filtered) {
+          const k = t.status || 'OTHER';
+          if (!groups[k]) groups[k] = [];
+          groups[k].push(t);
+        }
+        const sortedKeys = Object.keys(groups).sort((a, b) => {
+          const ia = statusOrder.indexOf(a);
+          const ib = statusOrder.indexOf(b);
+          if (ia !== -1 && ib !== -1) return ia - ib;
+          if (ia !== -1) return -1;
+          if (ib !== -1) return 1;
+          return a.localeCompare(b);
+        });
+        const html = sortedKeys.map(st => \`
+          <div class="group-section">
+            <div class="group-header">\${escapeHtml(st)} (\${groups[st].length})</div>
+            <ul class="link-list">
+              \${groups[st].map(t => \`
+                <li class="link-item">
+                  <a href="./\${t.slug}/" class="bare-link">\${escapeHtml(t.title)}</a>
+                </li>
+              \`).join('')}
+            </ul>
+          </div>
+        \`).join('');
+        content.innerHTML = html;
+      }
+
+      document.querySelectorAll('.group-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.group === currentGroup);
+      });
+    }
+
     const filterInput = document.getElementById('filterInput');
     filterInput.addEventListener('input', (e) => {
-      const q = e.target.value.toLowerCase();
-      document.querySelectorAll('.item-row').forEach(row => {
-        const text = row.innerText.toLowerCase();
-        row.style.display = text.includes(q) ? 'flex' : 'none';
-      });
+      searchQuery = e.target.value;
+      render();
     });
 
     document.addEventListener('keydown', (e) => {
@@ -575,6 +637,8 @@ function updateIndexHtml() {
         filterInput.select();
       }
     });
+
+    render();
   </script>
 </body>
 </html>`;
