@@ -46,6 +46,18 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+function formatTimeAgo(date) {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function renderMarkdownToHtml(markdownText) {
   if (!markdownText) return '';
   
@@ -140,113 +152,130 @@ function generateTaskDashboardHtml(meta) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>${title} | Task Dashboard</title>
+  <title>${title} — Task</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/_style/house-style.css">
   <script src="/_style/house-style.js" defer></script>
+  <style>
+    .task-nav-back {
+      font-size: 13px;
+      margin-bottom: 16px;
+      display: inline-block;
+    }
+    .task-header {
+      margin-bottom: 20px;
+    }
+    .task-header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .task-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted-foreground);
+      flex-wrap: wrap;
+    }
+    .deliverable-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .deliverable-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px;
+    }
+  </style>
 </head>
 <body class="app-shell">
 
-  <header class="header-shell">
-    <div class="header-container">
-      <div class="brand-row">
-        <div class="brand-icon">📁</div>
-        <div>
-          <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-            <span class="badge ${statusBadgeClass}">${status}</span>
-            <span class="badge badge-secondary">${project}</span>
-            <span class="badge badge-outline">${specId}</span>
-          </div>
-          <h1 style="margin-top: 0.2rem;">${title}</h1>
-        </div>
-      </div>
-      <div>
-        <a href="../index.html" class="btn btn-secondary btn-sm">← Back to Hub</a>
+  <main class="container" style="max-width: 800px; padding-top: 24px;">
+
+    <a href="../index.html" class="task-nav-back">← All tasks</a>
+
+    <div class="task-header">
+      <h1>${title}</h1>
+      <div class="task-meta">
+        <span class="badge ${statusBadgeClass}">${status}</span>
+        <span class="tag">${project}</span>
+        <code>${specId}</code>
+        <span>· Updated ${updatedAt}</span>
       </div>
     </div>
-  </header>
-
-  <main class="container">
 
     <div data-tabs class="tabs-wrapper">
       <div class="tabs-list">
-        <button class="tabs-trigger active" data-tab-target="tab-overview">🧭 Overview</button>
-        ${hasVisualPlan ? `<button class="tabs-trigger" data-tab-target="tab-visual-plan">🎨 Visual Plan</button>` : ''}
-        ${hasWrittenPlan ? `<button class="tabs-trigger" data-tab-target="tab-written-plan">📝 Written Plan</button>` : ''}
-        ${hasSymbolDiff || prUrl ? `<button class="tabs-trigger" data-tab-target="tab-pr">📌 PR & Diffs</button>` : ''}
-        ${hasSpec ? `<button class="tabs-trigger" data-tab-target="tab-spec">📋 Spec Source</button>` : ''}
+        <button class="tabs-trigger active" data-tab-target="tab-overview">Overview</button>
+        ${hasVisualPlan ? `<button class="tabs-trigger" data-tab-target="tab-visual-plan">Visual Plan</button>` : ''}
+        ${hasWrittenPlan ? `<button class="tabs-trigger" data-tab-target="tab-written-plan">Written Plan</button>` : ''}
+        ${hasSymbolDiff || prUrl ? `<button class="tabs-trigger" data-tab-target="tab-pr">PR & Diff</button>` : ''}
+        ${hasSpec ? `<button class="tabs-trigger" data-tab-target="tab-spec">Spec</button>` : ''}
       </div>
 
       <!-- OVERVIEW TAB -->
-      <div class="tabs-content active" data-tab-content="tab-overview" id="tab-overview" style="margin-top: 1.25rem;">
-        <div class="grid-2">
+      <div class="tabs-content active" data-tab-content="tab-overview" id="tab-overview" style="margin-top: 16px;">
+        <div class="grid-1">
           
           <div class="card">
             <div class="card-header">
-              <h3 class="card-title">Task Summary</h3>
-              <div class="card-description">Autonomous feature delivery for <strong>${title}</strong></div>
+              <h3 class="card-title">Task Details</h3>
             </div>
             <div class="card-content">
-              <div style="display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.875rem;">
-                <div><strong>Spec Identifier:</strong> <code>${specId}</code></div>
-                <div><strong>Target Repository:</strong> <code>~/code/homostellaris/${project}</code></div>
-                <div><strong>Isolated Worktree:</strong> <code>.worktrees/${specId}</code></div>
-                <div><strong>Feature Branch:</strong> <code>${specId}</code></div>
-                <div><strong>Last Updated:</strong> ${updatedAt}</div>
+              <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
+                <div><strong>Spec:</strong> <code>${specId}</code></div>
+                <div><strong>Repository:</strong> <code>~/code/homostellaris/${project}</code></div>
+                <div><strong>Worktree:</strong> <code>.worktrees/${specId}</code></div>
+                <div><strong>Branch:</strong> <code>${specId}</code></div>
               </div>
 
-              <div style="display: flex; gap: 0.6rem; margin-top: 1.25rem; flex-wrap: wrap;">
-                <a href="https://wa.me/447812754124?text=approve%20${specId}" class="btn btn-primary" target="_blank">
-                  💬 Approve on WhatsApp
+              <div style="display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap;">
+                <a href="https://wa.me/447812754124?text=approve%20${specId}" class="btn btn-primary btn-sm" target="_blank">
+                  Approve on WhatsApp →
                 </a>
-                ${prUrl ? `<a href="${prUrl}" class="btn btn-secondary" target="_blank">View GitHub PR ↗</a>` : ''}
+                ${prUrl ? `<a href="${prUrl}" class="btn btn-secondary btn-sm" target="_blank">View GitHub PR #${prNumber || ''} →</a>` : ''}
               </div>
             </div>
           </div>
 
           <div class="card">
             <div class="card-header">
-              <h3 class="card-title">Task Deliverables</h3>
-              <div class="card-description">Artifacts tracked in this task bundle</div>
+              <h3 class="card-title">Deliverables in Folder</h3>
             </div>
             <div class="card-content">
-              <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+              <div class="deliverable-list">
                 ${hasVisualPlan ? `
-                  <div class="card" style="padding: 0.75rem 1rem; flex-direction: row; justify-content: space-between; align-items: center; background: #0b111e;">
-                    <div>
-                      <div style="font-weight: 600; font-size: 0.875rem; color: #fff;">🎨 Visual Plan</div>
-                      <div style="font-size: 0.75rem; color: var(--muted-foreground);">Interactive UI wireframes & architecture</div>
-                    </div>
-                    <a href="./visual-plan.html" class="btn btn-secondary btn-sm" target="_blank">Open</a>
+                  <div class="deliverable-item">
+                    <span>Visual Plan</span>
+                    <a href="./visual-plan.html" target="_blank">visual-plan.html →</a>
                   </div>` : ''}
 
                 ${hasWrittenPlan ? `
-                  <div class="card" style="padding: 0.75rem 1rem; flex-direction: row; justify-content: space-between; align-items: center; background: #0b111e;">
-                    <div>
-                      <div style="font-weight: 600; font-size: 0.875rem; color: #fff;">📝 Written Plan</div>
-                      <div style="font-size: 0.75rem; color: var(--muted-foreground);">Technical contract & implementation phases</div>
-                    </div>
-                    <button class="btn btn-secondary btn-sm" onclick="document.querySelector('[data-tab-target=\\'tab-written-plan\\']')?.click()">View</button>
+                  <div class="deliverable-item">
+                    <span>Written Technical Plan</span>
+                    <a href="javascript:void(0)" onclick="document.querySelector('[data-tab-target=\\'tab-written-plan\\']')?.click()">View plan →</a>
                   </div>` : ''}
 
                 ${hasSymbolDiff ? `
-                  <div class="card" style="padding: 0.75rem 1rem; flex-direction: row; justify-content: space-between; align-items: center; background: #0b111e;">
-                    <div>
-                      <div style="font-weight: 600; font-size: 0.875rem; color: #fff;">⚡ SymbolDiff Review</div>
-                      <div style="font-size: 0.75rem; color: var(--muted-foreground);">Type & function signature diffs</div>
-                    </div>
-                    <a href="./symboldiff.html" class="btn btn-secondary btn-sm" target="_blank">Open</a>
+                  <div class="deliverable-item">
+                    <span>SymbolDiff Review</span>
+                    <a href="./symboldiff.html" target="_blank">symboldiff.html →</a>
                   </div>` : ''}
 
                 ${hasSpec ? `
-                  <div class="card" style="padding: 0.75rem 1rem; flex-direction: row; justify-content: space-between; align-items: center; background: #0b111e;">
-                    <div>
-                      <div style="font-weight: 600; font-size: 0.875rem; color: #fff;">📋 StarFocus Spec</div>
-                      <div style="font-size: 0.75rem; color: var(--muted-foreground);">Original Obsidian todo spec</div>
-                    </div>
-                    <button class="btn btn-secondary btn-sm" onclick="document.querySelector('[data-tab-target=\\'tab-spec\\']')?.click()">View</button>
+                  <div class="deliverable-item">
+                    <span>Obsidian Spec</span>
+                    <a href="javascript:void(0)" onclick="document.querySelector('[data-tab-target=\\'tab-spec\\']')?.click()">View spec →</a>
                   </div>` : ''}
               </div>
             </div>
@@ -257,11 +286,11 @@ function generateTaskDashboardHtml(meta) {
 
       <!-- VISUAL PLAN TAB -->
       ${hasVisualPlan ? `
-      <div class="tabs-content" data-tab-content="tab-visual-plan" id="tab-visual-plan" style="margin-top: 1.25rem;">
-        <div class="card" style="padding: 0.75rem;">
-          <div class="card-header-row" style="padding: 0.25rem 0.5rem 0.75rem;">
-            <h3 class="card-title">🎨 Interactive Visual Plan</h3>
-            <a href="./visual-plan.html" target="_blank" class="btn btn-secondary btn-sm">Open Full Page ↗</a>
+      <div class="tabs-content" data-tab-content="tab-visual-plan" id="tab-visual-plan" style="margin-top: 16px;">
+        <div class="card" style="padding: 12px;">
+          <div class="card-header-row" style="margin-bottom: 8px;">
+            <h3 class="card-title">Visual Plan</h3>
+            <a href="./visual-plan.html" target="_blank" style="font-size: 12px;">Open full page →</a>
           </div>
           <iframe src="./visual-plan.html" class="tab-iframe" title="Visual Plan"></iframe>
         </div>
@@ -269,10 +298,10 @@ function generateTaskDashboardHtml(meta) {
 
       <!-- WRITTEN PLAN TAB -->
       ${hasWrittenPlan ? `
-      <div class="tabs-content" data-tab-content="tab-written-plan" id="tab-written-plan" style="margin-top: 1.25rem;">
+      <div class="tabs-content" data-tab-content="tab-written-plan" id="tab-written-plan" style="margin-top: 16px;">
         <div class="card">
           <div class="card-header">
-            <h3 class="card-title">📝 Written Technical Implementation Plan</h3>
+            <h3 class="card-title">Written Implementation Plan</h3>
           </div>
           <div class="card-content">
             ${writtenPlanContent}
@@ -282,22 +311,22 @@ function generateTaskDashboardHtml(meta) {
 
       <!-- PR & DIFF TAB -->
       ${hasSymbolDiff || prUrl ? `
-      <div class="tabs-content" data-tab-content="tab-pr" id="tab-pr" style="margin-top: 1.25rem;">
-        <div class="card" style="padding: 0.75rem;">
-          <div class="card-header-row" style="padding: 0.25rem 0.5rem 0.75rem;">
-            <h3 class="card-title">⚡ Pull Request & SymbolDiff Review</h3>
-            ${prUrl ? `<a href="${prUrl}" target="_blank" class="btn btn-primary btn-sm">Open PR #${prNumber || ''} on GitHub ↗</a>` : ''}
+      <div class="tabs-content" data-tab-content="tab-pr" id="tab-pr" style="margin-top: 16px;">
+        <div class="card" style="padding: 12px;">
+          <div class="card-header-row" style="margin-bottom: 8px;">
+            <h3 class="card-title">Pull Request & SymbolDiff</h3>
+            ${prUrl ? `<a href="${prUrl}" target="_blank" style="font-size: 12px;">Open PR #${prNumber || ''} on GitHub →</a>` : ''}
           </div>
-          ${hasSymbolDiff ? `<iframe src="./symboldiff.html" class="tab-iframe" title="Symbol Diff"></iframe>` : `<p style="padding: 1rem;">Pull request opened at <a href="${prUrl}" target="_blank">${prUrl}</a></p>`}
+          ${hasSymbolDiff ? `<iframe src="./symboldiff.html" class="tab-iframe" title="Symbol Diff"></iframe>` : `<p style="padding: 1rem;">PR URL: <a href="${prUrl}" target="_blank">${prUrl}</a></p>`}
         </div>
       </div>` : ''}
 
       <!-- SPEC TAB -->
       ${hasSpec ? `
-      <div class="tabs-content" data-tab-content="tab-spec" id="tab-spec" style="margin-top: 1.25rem;">
+      <div class="tabs-content" data-tab-content="tab-spec" id="tab-spec" style="margin-top: 16px;">
         <div class="card">
           <div class="card-header">
-            <h3 class="card-title">📋 StarFocus Obsidian Specification</h3>
+            <h3 class="card-title">Spec Source</h3>
           </div>
           <div class="card-content">
             ${specContent}
@@ -312,24 +341,12 @@ function generateTaskDashboardHtml(meta) {
 </html>`;
 }
 
-function formatTimeAgo(date) {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
 function updateIndexHtml() {
   if (!fs.existsSync(REPORTS_DIR)) return;
 
   const entries = fs.readdirSync(REPORTS_DIR, { withFileTypes: true });
 
-  // 1. Task folders (directories with an index.html)
+  // Only list task folders (directories with an index.html)
   const taskFolders = entries
     .filter(d => d.isDirectory() && !d.name.startsWith('.') && d.name !== '_style')
     .map(d => {
@@ -345,8 +362,6 @@ function updateIndexHtml() {
 
       const stat = fs.statSync(indexPath);
       return {
-        type: 'task',
-        href: `./${d.name}/`,
         slug: d.name,
         title: meta.title || d.name,
         project: meta.project || '',
@@ -354,29 +369,10 @@ function updateIndexHtml() {
         mtime: stat.mtime,
       };
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .sort((a, b) => b.mtime - a.mtime);
 
-  // 2. Standalone HTML files
-  const standaloneFiles = entries
-    .filter(d => d.isFile() && d.name.endsWith('.html') && d.name !== 'index.html')
-    .map(d => {
-      const filePath = path.join(REPORTS_DIR, d.name);
-      const stat = fs.statSync(filePath);
-      return {
-        type: 'file',
-        href: `./${d.name}`,
-        slug: d.name.replace(/\.html$/, ''),
-        title: d.name.replace(/\.html$/, ''),
-        project: '',
-        status: '',
-        mtime: stat.mtime,
-      };
-    });
-
-  // Combine and sort by last updated (newest first)
-  const allItems = [...taskFolders, ...standaloneFiles].sort((a, b) => b.mtime - a.mtime);
-
-  const listRows = allItems.map(item => {
+  const listRows = taskFolders.map(item => {
     const timeAgo = formatTimeAgo(item.mtime);
     const fullDate = item.mtime.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -392,17 +388,16 @@ function updateIndexHtml() {
     const tagHtml = item.project ? `<span class="tag">${escapeHtml(item.project)}</span>` : '';
 
     return `
-      <a class="item-row" href="${item.href}">
+      <li class="item-row">
         <div class="item-left">
-          <span class="item-icon">${item.type === 'task' ? '📁' : '📄'}</span>
-          <span class="item-title">${escapeHtml(item.title)}</span>
+          <a class="item-link" href="./${item.slug}/">${escapeHtml(item.title)}</a>
           ${tagHtml}
         </div>
         <div class="item-right">
           ${badgeHtml}
           <span class="item-time" title="${fullDate}">${timeAgo}</span>
         </div>
-      </a>
+      </li>
     `;
   }).join('\n');
 
@@ -411,7 +406,7 @@ function updateIndexHtml() {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Share</title>
+  <title>Tasks</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -419,7 +414,6 @@ function updateIndexHtml() {
     :root {
       --bg: #090d16;
       --surface: #0f172a;
-      --surface-hover: #162238;
       --border: #1e293b;
       --text: #f8fafc;
       --text-muted: #64748b;
@@ -439,20 +433,20 @@ function updateIndexHtml() {
       min-height: 100vh;
       display: flex;
       justify-content: center;
-      padding: 24px 16px 64px;
+      padding: 32px 16px 64px;
     }
     .wrapper {
       width: 100%;
-      max-width: 640px;
+      max-width: 680px;
     }
     .filter-box {
-      margin-bottom: 12px;
+      margin-bottom: 16px;
     }
     .filter-input {
       width: 100%;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 6px;
       padding: 10px 14px;
       color: var(--text);
       font-family: var(--font-sans);
@@ -468,10 +462,11 @@ function updateIndexHtml() {
       color: var(--text-muted);
     }
     .item-list {
+      list-style: none;
       display: flex;
       flex-direction: column;
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 6px;
       overflow: hidden;
       background: var(--surface);
     }
@@ -479,18 +474,16 @@ function updateIndexHtml() {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 11px 14px;
-      text-decoration: none;
-      color: inherit;
+      padding: 12px 16px;
       border-bottom: 1px solid var(--border);
-      transition: background 0.1s ease;
       gap: 12px;
+      transition: background 0.1s ease;
     }
     .item-row:last-child {
       border-bottom: none;
     }
     .item-row:hover {
-      background: var(--surface-hover);
+      background: #162238;
     }
     .item-left {
       display: flex;
@@ -499,17 +492,16 @@ function updateIndexHtml() {
       min-width: 0;
       overflow: hidden;
     }
-    .item-icon {
-      font-size: 14px;
-      flex-shrink: 0;
-      opacity: 0.8;
-    }
-    .item-title {
+    .item-link {
       font-weight: 500;
-      color: var(--text);
+      color: var(--accent);
+      text-decoration: none;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+    .item-link:hover {
+      text-decoration: underline;
     }
     .tag {
       font-family: var(--font-mono);
@@ -548,7 +540,7 @@ function updateIndexHtml() {
       text-align: right;
     }
     .empty {
-      padding: 24px;
+      padding: 32px;
       text-align: center;
       color: var(--text-muted);
       font-size: 13px;
@@ -558,12 +550,12 @@ function updateIndexHtml() {
 <body>
   <div class="wrapper">
     <div class="filter-box">
-      <input type="text" id="filterInput" class="filter-input" placeholder="Search..." autofocus autocomplete="off">
+      <input type="text" id="filterInput" class="filter-input" placeholder="Search tasks..." autofocus autocomplete="off">
     </div>
 
-    <div class="item-list" id="itemList">
-      ${listRows || '<div class="empty">No shared artifacts yet.</div>'}
-    </div>
+    <ul class="item-list" id="itemList">
+      ${listRows || '<li class="empty">No tasks found.</li>'}
+    </ul>
   </div>
 
   <script>
@@ -658,10 +650,10 @@ function hostTaskDashboard(args) {
   const { ip, magicDns } = getTailscaleInfo();
   const dashboardUrl = magicDns ? `${magicDns}/${cleanSpecId}/` : (ip ? `http://${ip}:8787/${cleanSpecId}/` : `http://localhost:8787/${cleanSpecId}/`);
 
-  console.log(`\n✅ Task Dashboard Created for '${cleanSpecId}'`);
-  console.log(`📂 Folder:    ${taskDir}`);
-  console.log(`📱 Dashboard: ${dashboardUrl}`);
-  console.log(`🌐 Hub:       ${magicDns ? `${magicDns}/` : 'http://localhost:8787/'}\n`);
+  console.log(`\nTask Dashboard Created for '${cleanSpecId}'`);
+  console.log(`Folder:    ${taskDir}`);
+  console.log(`Dashboard: ${dashboardUrl}`);
+  console.log(`Hub:       ${magicDns ? `${magicDns}/` : 'http://localhost:8787/'}\n`);
 
   return dashboardUrl;
 }
@@ -670,7 +662,7 @@ function main() {
   const args = process.argv.slice(2);
   if (args.length === 0 || args.includes('-h') || args.includes('--help')) {
     console.log(`
-🌐 share: Share artifacts, visualizers, diffs & task dashboards on Tailscale
+share: Share artifacts, visualizers, diffs & task dashboards on Tailscale
 
 USAGE:
   # Share a single HTML file:
@@ -709,17 +701,17 @@ ALIASES:
   if (args.includes('--refresh') || (args.length === 1 && args.includes('--status'))) {
     updateIndexHtml();
     const { ip, magicDns } = getTailscaleInfo();
-    console.log(`\n🌐 Tailscale Share Hub Status:`);
-    console.log(`📂 Location:   ${REPORTS_DIR}`);
-    if (magicDns) console.log(`🔗 MagicDNS:   ${magicDns}`);
-    if (ip)       console.log(`📱 Tailnet IP: http://${ip}:8787/`);
-    console.log(`💻 Local:      file://${REPORTS_DIR}/index.html\n`);
+    console.log(`\nTailscale Share Hub Status:`);
+    console.log(`Location:   ${REPORTS_DIR}`);
+    if (magicDns) console.log(`MagicDNS:   ${magicDns}`);
+    if (ip)       console.log(`Tailnet IP: http://${ip}:8787/`);
+    console.log(`Local:      file://${REPORTS_DIR}/index.html\n`);
     process.exit(0);
   }
 
   const fileArg = args.find(a => !a.startsWith('-'));
   if (!fileArg || !fs.existsSync(fileArg)) {
-    console.error(`❌ Error: File '${fileArg}' does not exist.`);
+    console.error(`Error: File '${fileArg}' does not exist.`);
     process.exit(1);
   }
 
@@ -737,11 +729,11 @@ ALIASES:
   const phoneUrl = magicDns ? `${magicDns}/${slug}.html` : (ip ? `http://${ip}:8787/${slug}.html` : `http://localhost:8787/${slug}.html`);
   const hubUrl = magicDns ? `${magicDns}/` : (ip ? `http://${ip}:8787/` : `http://localhost:8787/`);
 
-  console.log(`\n✅ Hosted Report: '${slug}'`);
-  console.log(`📂 Saved to:   ${destFile}`);
-  console.log(`📱 Phone / Remote URL: ${phoneUrl}`);
-  console.log(`🌐 Reports Hub:        ${hubUrl}`);
-  console.log(`💻 Local:              file://${destFile}\n`);
+  console.log(`\nHosted Report: '${slug}'`);
+  console.log(`Saved to:   ${destFile}`);
+  console.log(`Phone / Remote URL: ${phoneUrl}`);
+  console.log(`Reports Hub:        ${hubUrl}`);
+  console.log(`Local:              file://${destFile}\n`);
 
   if (args.includes('--open')) {
     const openCmd = process.platform === 'darwin' ? 'open' : (process.platform === 'win32' ? 'start' : 'xdg-open');
