@@ -52,9 +52,11 @@ share --status
 
 ---
 
-## 2. House Style Component Architecture
+## 2. House Style Architecture (Basecoat UI Framework)
 
-When generating standalone HTML pages or visual plans to be shared:
+We follow the **[Basecoat UI framework](https://basecoatui.com/)** architecture — the documented community standard for framework-agnostic, HTML-first implementations of **[shadcn/ui](https://ui.shadcn.com/)**.
+
+When generating standalone HTML pages or visual plans:
 
 1. **Link the global theme & controller**:
    ```html
@@ -73,3 +75,29 @@ When generating standalone HTML pages or visual plans to be shared:
    * WhatsApp Action: `<a href="https://wa.me/447812754124?text=approve%20$SPEC_ID" class="btn btn-primary">💬 Approve on WhatsApp</a>`
 
 For full copy-paste component templates and markup patterns, consult [references/COMPONENTS.md](references/COMPONENTS.md).
+
+---
+
+## 3. Customizing & Swapping Themes from Shadcn Registry
+
+Because the system strictly uses the **Shadcn Design Token Schema** (`--background`, `--foreground`, `--card`, `--primary`, `--ring`, `--radius`), you can instantly change the look and feel of all shared dashboards and artifacts at any time.
+
+### How to Apply a Theme from the [Shadcn Directory / Registry](https://ui.shadcn.com/docs/directory)
+
+1. Pick any palette or preset from [ui.shadcn.com/themes](https://ui.shadcn.com/themes) or community registries (e.g. Zinc, Slate, Neutral, Violet, Rose, Sunset).
+2. Copy the CSS variables block:
+   ```css
+   :root {
+     --background: #090d16;
+     --foreground: #f8fafc;
+     --card: #0f172a;
+     --primary: #38bdf8;
+     --muted: #1e293b;
+     --border: #1e293b;
+     --radius: 0.5rem;
+     /* ...any shadcn theme variables */
+   }
+   ```
+3. Update `dotfiles/agents/styles/house-style.css` and deploy (`share --status` or `install.sh`).
+4. **Instant Propagation**: Because all task dashboards, visual plans, and reports link to `/_style/house-style.css`, updating this single file automatically restyles **every past and future artifact on Tailscale** without modifying individual HTML files!
+

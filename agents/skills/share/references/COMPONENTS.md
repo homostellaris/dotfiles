@@ -1,6 +1,8 @@
-# House Style Component System (Shadcn Architecture)
+# House Style Component System (Basecoat UI / Shadcn Architecture)
 
 All agent-generated web pages, visual plans, dashboards, tool reports, and prototypes shared on Tailscale MUST follow this design system to ensure strict UI/UX consistency, accessibility, and mobile responsiveness.
+
+This implementation follows the **[Basecoat UI framework](https://basecoatui.com/)** standard, making it 100% token-compatible with the official **[shadcn/ui registry and directory](https://ui.shadcn.com/docs/directory)**.
 
 ## 1. Quick Start Template
 
