@@ -312,6 +312,18 @@ function generateTaskDashboardHtml(meta) {
 </html>`;
 }
 
+function formatTimeAgo(date) {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function updateIndexHtml() {
   if (!fs.existsSync(REPORTS_DIR)) return;
 
@@ -319,7 +331,7 @@ function updateIndexHtml() {
 
   // 1. Task folders (directories with an index.html)
   const taskFolders = entries
-    .filter(d => d.isDirectory())
+    .filter(d => d.isDirectory() && !d.name.startsWith('.') && d.name !== '_style')
     .map(d => {
       const folderPath = path.join(REPORTS_DIR, d.name);
       const indexPath = path.join(folderPath, 'index.html');
@@ -333,18 +345,16 @@ function updateIndexHtml() {
 
       const stat = fs.statSync(indexPath);
       return {
+        type: 'task',
+        href: `./${d.name}/`,
         slug: d.name,
         title: meta.title || d.name,
-        project: meta.project || 'starfocus',
+        project: meta.project || '',
         status: meta.status || 'IN_PROGRESS',
         mtime: stat.mtime,
-        hasVisualPlan: fs.existsSync(path.join(folderPath, 'visual-plan.html')),
-        hasWrittenPlan: fs.existsSync(path.join(folderPath, 'plan.html')) || fs.existsSync(path.join(folderPath, 'plan.md')),
-        hasPR: fs.existsSync(path.join(folderPath, 'symboldiff.html')) || !!meta.prUrl,
       };
     })
-    .filter(Boolean)
-    .sort((a, b) => b.mtime - a.mtime);
+    .filter(Boolean);
 
   // 2. Standalone HTML files
   const standaloneFiles = entries
@@ -353,58 +363,45 @@ function updateIndexHtml() {
       const filePath = path.join(REPORTS_DIR, d.name);
       const stat = fs.statSync(filePath);
       return {
-        name: d.name,
+        type: 'file',
+        href: `./${d.name}`,
         slug: d.name.replace(/\.html$/, ''),
+        title: d.name.replace(/\.html$/, ''),
+        project: '',
+        status: '',
         mtime: stat.mtime,
-        size: stat.size
       };
-    })
-    .sort((a, b) => b.mtime - a.mtime);
+    });
 
-  const taskCards = taskFolders.map(t => {
-    const formattedDate = t.mtime.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
-    return `
-      <div class="task-dashboard-card">
-        <div class="task-card-main">
-          <div class="card-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">📁</div>
-          <div class="card-body">
-            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-              <span class="badge" style="background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.25);">${escapeHtml(t.status)}</span>
-              <span style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">${escapeHtml(t.project)}</span>
-            </div>
-            <a href="./${t.slug}/" class="card-title" style="text-decoration: none; display: block; margin-top: 0.25rem;">
-              ${escapeHtml(t.title)}
-            </a>
-            <div class="card-meta">
-              <span>🔑 ${escapeHtml(t.slug)}</span>
-              <span>📅 ${formattedDate}</span>
-            </div>
-          </div>
-        </div>
-        <div class="task-sublinks">
-          <a href="./${t.slug}/" class="sublink-btn primary">Dashboard ➔</a>
-          ${t.hasVisualPlan ? `<a href="./${t.slug}/visual-plan.html" class="sublink-btn">Visual Plan</a>` : ''}
-          ${t.hasWrittenPlan ? `<a href="./${t.slug}/#written-plan" class="sublink-btn">Written Plan</a>` : ''}
-          ${t.hasPR ? `<a href="./${t.slug}/#pr" class="sublink-btn">PR & Diff</a>` : ''}
-        </div>
-      </div>
-    `;
-  }).join('\n');
+  // Combine and sort by last updated (newest first)
+  const allItems = [...taskFolders, ...standaloneFiles].sort((a, b) => b.mtime - a.mtime);
 
-  const standaloneListItems = standaloneFiles.map(e => {
-    const formattedDate = e.mtime.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
-    const sizeKb = Math.round(e.size / 1024);
+  const listRows = allItems.map(item => {
+    const timeAgo = formatTimeAgo(item.mtime);
+    const fullDate = item.mtime.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+
+    let badgeHtml = '';
+    if (item.status) {
+      let badgeClass = 'badge-default';
+      if (item.status === 'IN_PROGRESS') badgeClass = 'badge-warning';
+      if (item.status === 'PR_OPEN') badgeClass = 'badge-purple';
+      if (item.status === 'VERIFIED' || item.status === 'DEPLOYED') badgeClass = 'badge-success';
+      badgeHtml = `<span class="badge ${badgeClass}">${escapeHtml(item.status)}</span>`;
+    }
+
+    const tagHtml = item.project ? `<span class="tag">${escapeHtml(item.project)}</span>` : '';
+
     return `
-      <a class="report-card" href="./${e.name}">
-        <div class="card-icon">📊</div>
-        <div class="card-body">
-          <div class="card-title">${e.slug}</div>
-          <div class="card-meta">
-            <span>📅 ${formattedDate}</span>
-            <span>💾 ${sizeKb} KB</span>
-          </div>
+      <a class="item-row" href="${item.href}">
+        <div class="item-left">
+          <span class="item-icon">${item.type === 'task' ? '📁' : '📄'}</span>
+          <span class="item-title">${escapeHtml(item.title)}</span>
+          ${tagHtml}
         </div>
-        <div class="card-arrow">➔</div>
+        <div class="item-right">
+          ${badgeHtml}
+          <span class="item-time" title="${fullDate}">${timeAgo}</span>
+        </div>
       </a>
     `;
   }).join('\n');
@@ -413,231 +410,159 @@ function updateIndexHtml() {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agent Reports & Task Hub</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Share</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-primary: #090d13;
-      --bg-secondary: #0d1117;
-      --bg-surface: #161b22;
-      --bg-hover: #21262d;
-      --border: #30363d;
-      --accent: #58a6ff;
-      --text: #f0f6fc;
-      --text-muted: #8b949e;
+      --bg: #090d16;
+      --surface: #0f172a;
+      --surface-hover: #162238;
+      --border: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #64748b;
+      --accent: #38bdf8;
+      --success: #34d399;
+      --warning: #fbbf24;
+      --purple: #c084fc;
       --font-sans: 'Inter', system-ui, sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: var(--bg-primary);
+      background: var(--bg);
       color: var(--text);
       font-family: var(--font-sans);
+      font-size: 14px;
       min-height: 100vh;
       display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 32px 16px;
-    }
-    .container {
-      width: 100%;
-      max-width: 800px;
-    }
-    header {
-      margin-bottom: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 16px;
-    }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .brand-icon {
-      background: linear-gradient(135deg, #58a6ff, #bc8cff);
-      color: #fff;
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
       justify-content: center;
-      font-size: 18px;
+      padding: 24px 16px 64px;
     }
-    h1 { font-size: 20px; font-weight: 700; }
-    .badge {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      padding: 3px 8px;
-      border-radius: 6px;
-      color: var(--text-muted);
-    }
-    .search-input {
+    .wrapper {
       width: 100%;
-      background: var(--bg-secondary);
+      max-width: 640px;
+    }
+    .filter-box {
+      margin-bottom: 12px;
+    }
+    .filter-input {
+      width: 100%;
+      background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 10px 14px;
       color: var(--text);
+      font-family: var(--font-sans);
       font-size: 14px;
-      margin-bottom: 20px;
       outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
-    .search-input:focus {
+    .filter-input:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(88,166,255,0.15);
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
     }
-    .section-heading {
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+    .filter-input::placeholder {
       color: var(--text-muted);
-      margin: 24px 0 12px;
-      font-weight: 700;
     }
-    .report-grid {
+    .item-list {
       display: flex;
       flex-direction: column;
-      gap: 10px;
-    }
-    .task-dashboard-card {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 14px 16px;
-      transition: all 0.15s ease;
-    }
-    .task-dashboard-card:hover {
-      border-color: var(--accent);
-      background: var(--bg-surface);
-    }
-    .task-card-main {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    .task-sublinks {
-      display: flex;
-      gap: 6px;
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid rgba(255,255,255,0.06);
-      flex-wrap: wrap;
-    }
-    .sublink-btn {
-      font-size: 11px;
-      padding: 3px 8px;
-      background: var(--bg-primary);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text-muted);
-      text-decoration: none;
-      font-weight: 500;
-      transition: all 0.1s ease;
-    }
-    .sublink-btn:hover {
-      color: var(--text);
-      border-color: var(--accent);
-    }
-    .sublink-btn.primary {
-      background: rgba(88,166,255,0.15);
-      color: var(--accent);
-      border-color: rgba(88,166,255,0.3);
-      font-weight: 600;
-    }
-    .report-card {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      background: var(--bg-secondary);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 12px 16px;
+      overflow: hidden;
+      background: var(--surface);
+    }
+    .item-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 11px 14px;
       text-decoration: none;
       color: inherit;
-      transition: all 0.15s ease;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s ease;
+      gap: 12px;
     }
-    .report-card:hover {
-      background: var(--bg-surface);
-      border-color: var(--accent);
-      transform: translateY(-1px);
+    .item-row:last-child {
+      border-bottom: none;
     }
-    .card-icon {
-      font-size: 20px;
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      width: 40px;
-      height: 40px;
-      border-radius: 8px;
+    .item-row:hover {
+      background: var(--surface-hover);
+    }
+    .item-left {
       display: flex;
       align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-    .card-body {
-      flex-grow: 1;
+      gap: 10px;
+      min-width: 0;
       overflow: hidden;
     }
-    .card-title {
-      font-weight: 600;
+    .item-icon {
       font-size: 14px;
-      color: var(--text);
-      font-family: var(--font-sans);
+      flex-shrink: 0;
+      opacity: 0.8;
     }
-    .card-meta {
+    .item-title {
+      font-weight: 500;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.04);
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .item-right {
       display: flex;
-      gap: 14px;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .badge-default { background: rgba(56, 189, 248, 0.15); color: var(--accent); }
+    .badge-warning { background: rgba(251, 191, 36, 0.15); color: var(--warning); }
+    .badge-purple { background: rgba(192, 132, 252, 0.15); color: var(--purple); }
+    .badge-success { background: rgba(52, 211, 153, 0.15); color: var(--success); }
+    .item-time {
+      font-family: var(--font-mono);
       font-size: 12px;
       color: var(--text-muted);
-      margin-top: 3px;
+      min-width: 55px;
+      text-align: right;
     }
-    .card-arrow {
-      color: var(--text-muted);
-      font-size: 16px;
-      font-weight: 600;
-    }
-    .empty-state {
+    .empty {
+      padding: 24px;
       text-align: center;
-      padding: 32px 0;
       color: var(--text-muted);
       font-size: 13px;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <div class="brand">
-        <div class="brand-icon">🌐</div>
-        <div>
-          <h1>Agent Reports & Tasks Hub</h1>
-          <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Hosted privately via Tailscale</div>
-        </div>
-      </div>
-      <span class="badge">${taskFolders.length} tasks • ${standaloneFiles.length} reports</span>
-    </header>
+  <div class="wrapper">
+    <div class="filter-box">
+      <input type="text" id="filterInput" class="filter-input" placeholder="Search..." autofocus autocomplete="off">
+    </div>
 
-    <input type="text" id="filterInput" class="search-input" placeholder="Filter tasks and reports..." autocomplete="off">
-
-    ${taskFolders.length > 0 ? `
-      <div class="section-heading">📁 Task Dashboards ($SPEC_ID)</div>
-      <div class="report-grid" id="taskGrid">
-        ${taskCards}
-      </div>
-    ` : ''}
-
-    <div class="section-heading">📊 Standalone Reports & Visualizers</div>
-    <div class="report-grid" id="reportGrid">
-      ${standaloneListItems || '<div class="empty-state">No standalone reports hosted yet.</div>'}
+    <div class="item-list" id="itemList">
+      ${listRows || '<div class="empty">No shared artifacts yet.</div>'}
     </div>
   </div>
 
@@ -645,10 +570,18 @@ function updateIndexHtml() {
     const filterInput = document.getElementById('filterInput');
     filterInput.addEventListener('input', (e) => {
       const q = e.target.value.toLowerCase();
-      document.querySelectorAll('.task-dashboard-card, .report-card').forEach(card => {
-        const text = card.innerText.toLowerCase();
-        card.style.display = text.includes(q) ? '' : 'none';
+      document.querySelectorAll('.item-row').forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(q) ? 'flex' : 'none';
       });
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '/' && document.activeElement !== filterInput) {
+        e.preventDefault();
+        filterInput.focus();
+        filterInput.select();
+      }
     });
   </script>
 </body>
@@ -773,9 +706,10 @@ ALIASES:
     return;
   }
 
-  if (args.length === 1 && args.includes('--status')) {
+  if (args.includes('--refresh') || (args.length === 1 && args.includes('--status'))) {
+    updateIndexHtml();
     const { ip, magicDns } = getTailscaleInfo();
-    console.log(`\n🌐 Tailscale Reports Hub Status:`);
+    console.log(`\n🌐 Tailscale Share Hub Status:`);
     console.log(`📂 Location:   ${REPORTS_DIR}`);
     if (magicDns) console.log(`🔗 MagicDNS:   ${magicDns}`);
     if (ip)       console.log(`📱 Tailnet IP: http://${ip}:8787/`);

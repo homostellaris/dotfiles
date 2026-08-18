@@ -726,6 +726,7 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       }
     }
   </style>
+  <link rel="stylesheet" href="/_style/symboldiff.css">
 </head>
 <body>
   <!-- Header Bar -->
