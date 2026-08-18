@@ -234,12 +234,12 @@ async function main() {
   const htmlOutPath = customOutPath || path.join(os.tmpdir(), `symboldiff_${Date.now()}.html`);
   fs.writeFileSync(htmlOutPath, htmlContent, 'utf-8');
 
-  // If --host is passed, host in ~/.local/share/agent-reports
+  // If --host is passed, host in ~/share
   if (rawArgs.includes('--host')) {
     try {
       const repoName = path.basename(gitRoot);
       const slug = `symboldiff-${repoName}`;
-      execSync(`host-report "${htmlOutPath}" --name "${slug}" 2>/dev/null || true`);
+      execSync(`share "${htmlOutPath}" --name "${slug}" 2>/dev/null || host-report "${htmlOutPath}" --name "${slug}" 2>/dev/null || true`);
     } catch {}
   }
 
@@ -262,7 +262,7 @@ async function main() {
   console.log(`\n# ⚡ SymbolDiff: ${comparisonTitle}\n`);
   console.log(`**Summary**: \`${diffData.summary.files}\` files modified | \`${diffData.summary.totalSymbols}\` symbols changed (\`⚡ ${diffData.summary.signatureModified}\` sig mod, \`📝 ${diffData.summary.bodyModified}\` body mod, \`✨ ${diffData.summary.added}\` added, \`🔥 ${diffData.summary.deleted}\` deleted)\n`);
   console.log(`🖥️ **Interactive Visualizer**: [Open in Browser](file://${htmlOutPath})`);
-  console.log(`📱 **Tailscale Phone Host**: \`host-report "${htmlOutPath}"\`\n`);
+  console.log(`📱 **Tailscale Phone Host**: \`share "${htmlOutPath}"\`\n`);
 
   for (const file of fileDiffs) {
     console.log(`### 📂 \`${file.path}\``);

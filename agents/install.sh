@@ -40,4 +40,10 @@ mkdir -p "$HOME/bin"
 ln -nsf "$DIR/scripts/build.py" "$HOME/bin/build"
 chmod +x "$DIR/scripts/build.py"
 
+ln -nsf "$DIR/scripts/share.mjs" "$HOME/bin/share"
+ln -nsf "$DIR/scripts/share.mjs" "$HOME/bin/host-report"
+ln -nsf "$DIR/scripts/share.mjs" "$HOME/bin/serve-report"
+chmod +x "$DIR/scripts/share.mjs"
+
+
 

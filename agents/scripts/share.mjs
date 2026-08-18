@@ -1041,27 +1041,30 @@ function main() {
   const args = process.argv.slice(2);
   if (args.length === 0 || args.includes('-h') || args.includes('--help')) {
     console.log(`
-🌐 host-report: Host artifacts, visualizers & task dashboards on Tailscale
+🌐 share: Share artifacts, visualizers, diffs & task dashboards on Tailscale
 
 USAGE:
-  # Host a single HTML file:
-  host-report <file.html> [--name <slug>] [--open]
+  # Share a single HTML file:
+  share <file.html> [--name <slug>] [--open]
 
-  # Host a full Task Dashboard bundle ($SPEC_ID folder):
-  host-report --task <spec_id> \\
-              [--title "Spec Title"] \\
-              [--project "banerry"] \\
-              [--status "PLAN REVIEW|IN_PROGRESS|PR_OPEN|VERIFIED|DEPLOYED"] \\
-              [--visual-plan <path/to/visual-plan.html>] \\
-              [--written-plan <path/to/plan.md>] \\
-              [--spec <path/to/spec.md>] \\
-              [--pr-url <url>] \\
-              [--symboldiff <path/to/symboldiff.html>]
+  # Share a full Task Dashboard bundle ($SPEC_ID folder):
+  share --task <spec_id> \\
+        [--title "Spec Title"] \\
+        [--project "banerry"] \\
+        [--status "PLAN REVIEW|IN_PROGRESS|PR_OPEN|VERIFIED|DEPLOYED"] \\
+        [--visual-plan <path/to/visual-plan.html>] \\
+        [--written-plan <path/to/plan.md>] \\
+        [--spec <path/to/spec.md>] \\
+        [--pr-url <url>] \\
+        [--symboldiff <path/to/symboldiff.html>]
 
 EXAMPLES:
-  host-report /tmp/symboldiff.html --name banerry-diff
-  host-report --task canvas-section_y2vtpcom --title "Canvas section" --visual-plan ./plan.html
-  host-report --status
+  share /tmp/symboldiff.html --name banerry-diff
+  share --task canvas-section_y2vtpcom --title "Canvas section" --visual-plan ./plan.html
+  share --status
+
+ALIASES:
+  host-report, serve-report
 `);
     process.exit(0);
   }

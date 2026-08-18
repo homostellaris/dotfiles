@@ -746,13 +746,13 @@ class BuildOrchestrator:
             return False
 
     def publish_task_dashboard(self, status: str = "PLAN REVIEW", symboldiff_path: Optional[str] = None) -> str:
-        host_report_bin = shutil.which("host-report") or str(Path.home() / "bin" / "host-report")
+        share_bin = shutil.which("share") or shutil.which("host-report") or str(Path.home() / "bin" / "share")
         dashboard_url = f"https://panther.tail29c7da.ts.net/{self.spec.identifier}/"
-        if not Path(host_report_bin).exists():
+        if not Path(share_bin).exists():
             return dashboard_url
 
         cmd = [
-            host_report_bin,
+            share_bin,
             "--task", self.spec.identifier,
             "--title", self.spec.title,
             "--project", self.spec.target_project,
@@ -800,9 +800,9 @@ class BuildOrchestrator:
         return dashboard_url
 
     def publish_tailscale_report(self, report_path: Path, slug: str) -> None:
-        host_report_bin = shutil.which("host-report") or str(Path.home() / "bin" / "host-report")
-        if Path(host_report_bin).exists():
-            subprocess.run([host_report_bin, str(report_path), "--name", slug], capture_output=True)
+        share_bin = shutil.which("share") or shutil.which("host-report") or str(Path.home() / "bin" / "share")
+        if Path(share_bin).exists():
+            subprocess.run([share_bin, str(report_path), "--name", slug], capture_output=True)
 
     def send_openclaw_notification(self, message: str) -> None:
         try:
