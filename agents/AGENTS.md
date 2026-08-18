@@ -17,20 +17,13 @@ Cypress tests should be organised such that they mirror the route they are testi
 
 - **Strict Rule**: Never commit or push changes directly to default branches (`master`, `main`, `develop`) under any circumstances unless explicitly requested by the user in the current session. Always develop on a separate feature branch and raise a PR.
 
-# House Style & UI Component System (Artifacts & Tailscale Only)
+# Agent Skills
 
-> [!IMPORTANT]
-> **Strict Boundary & Project Independence**:
-> This house style applies **EXCLUSIVELY** to agent-generated visual plans (`/visual-plan`), task dashboards (`share`), symbol diffs, and standalone HTML artifacts hosted in `~/share/` on Tailscale.
-> When building or editing code inside actual application repositories (e.g. `~/code/homostellaris/*`):
-> - **DO NOT** use or inject `house-style.css` or `house-style.js`.
-> - **ALWAYS** adhere strictly to the project's own styling approach, design tokens, and local component libraries (e.g., project-specific Tailwind, React components, CSS modules). Each project owns its own aesthetics and conventions.
-
-Whenever an agent builds web pages, dashboards, visual plans, prototypes, or HTML artifacts to share on Tailscale:
-- **Mandatory Component Library**: Link `/_style/house-style.css` and `/_style/house-style.js`.
-- **Component Primitives**: Always use standardized Shadcn HTML classes (`.card`, `.card-header`, `.card-title`, `.btn`, `.btn-primary`, `.badge`, `[data-tabs]`, `.table-container`, `[data-accordion]`).
-- **Mobile First**: Fluid containers, touch-scrollable tabs (`.tabs-list`), sticky header shells (`.header-shell`), and dark mode native colors.
-- **Reference Catalog**: Full copy-paste examples and markup patterns are documented in [`agents/styles/COMPONENTS.md`](file:///home/openclaw/code/homostellaris/dotfiles/agents/styles/COMPONENTS.md).
+Common automation skills and artifact sharing are located under `agents/skills/`:
+- **`share`**: Publish standalone HTML reports, visual plans, and multi-file task dashboards (`~/share/<spec_id>/`) using the Shadcn house style.
+- **`symboldiff`**: Generate symbol-level code reviews with interactive visualization.
+- **`commit-and-push`**: Co-author Git commits following Gitmoji standards.
+- **`check-pr-run`**: Monitor and report GitHub Actions CI status.
 
 
 
