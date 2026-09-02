@@ -37,8 +37,8 @@ done
 
 # Symlink scripts to ~/bin
 mkdir -p "$HOME/bin"
-ln -nsf "$DIR/scripts/build.py" "$HOME/bin/build"
-chmod +x "$DIR/scripts/build.py"
+ln -nsf "$DIR/scripts/build.ts" "$HOME/bin/build"
+chmod +x "$DIR/scripts/build.ts"
 
 ln -nsf "$DIR/scripts/share.mjs" "$HOME/bin/share"
 ln -nsf "$DIR/scripts/share.mjs" "$HOME/bin/host-report"
@@ -47,7 +47,7 @@ ln -nsf "$DIR/scripts/share.mjs" "$HOME/bin/serve-report"
 mkdir -p "$HOME/share/_style"
 cp "$DIR/styles/house-style.css" "$HOME/share/_style/house-style.css"
 cp "$DIR/styles/house-style.js" "$HOME/share/_style/house-style.js"
-cp "$DIR/styles/symboldiff.css" "$HOME/share/_style/symboldiff.css"
+[ -f "$DIR/styles/symboldiff.css" ] && cp "$DIR/styles/symboldiff.css" "$HOME/share/_style/symboldiff.css" || true
 
 
 
