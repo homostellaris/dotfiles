@@ -9,7 +9,7 @@ Use this skill when you need to publish standalone HTML reports, visual plans, s
 
 > [!IMPORTANT]
 > **Strict Boundary & Project Independence**:
-> The `house-style` component library applies **EXCLUSIVELY** to standalone HTML artifacts and task dashboards hosted in `$XDG_PUBLICSHARE_DIR` (defaulting to `~/Public/`, with legacy symlink `~/share/`).
+> The `house-style` component library applies **EXCLUSIVELY** to standalone HTML artifacts and task dashboards hosted in `$XDG_PUBLICSHARE_DIR` (defaulting to `~/Public/`).
 > When authoring or editing code inside actual application repositories (e.g. `~/code/homostellaris/*`):
 > - **NEVER** import or inject `house-style.css` or `house-style.js` into project source code.
 > - **ALWAYS** adhere strictly to that specific project's own styling approach, design tokens, and local component libraries.

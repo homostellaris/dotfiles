@@ -68,10 +68,5 @@ cp "$DIR/styles/house-style.css" "$SHARE_TARGET/_style/house-style.css"
 cp "$DIR/styles/house-style.js" "$SHARE_TARGET/_style/house-style.js"
 [ -f "$DIR/styles/symboldiff.css" ] && cp "$DIR/styles/symboldiff.css" "$SHARE_TARGET/_style/symboldiff.css" || true
 
-# Maintain backward-compatibility symlinks
-if [ "$SHARE_TARGET" != "$HOME/share" ]; then
-  ln -nsf "$SHARE_TARGET" "$HOME/share"
-fi
-
 # Refresh Portal and Tasks Dashboard
 node "$DIR/scripts/share.mjs" --refresh >/dev/null 2>&1 || true
