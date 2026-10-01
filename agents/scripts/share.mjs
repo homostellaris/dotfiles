@@ -597,13 +597,17 @@ function updateIndexHtml() {
 <body>
   <div class="wrapper">
     <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
-      <a href="./timer-factory/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid var(--accent); color: var(--accent); padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
-        <span>⏳</span>
-        <span>ZACH'S SENSORY TIMERS</span>
+      <a href="./zach/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid #ffb703; color: #ffb703; padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
+        <span>⭐</span>
+        <span>ZACH'S APPS</span>
       </a>
-      <a href="./lift/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid #a855f7; color: #c084fc; padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
+      <a href="./zach/lifts/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid #a855f7; color: #c084fc; padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
         <span>🛗</span>
-        <span>ZACH'S ELEVATOR SIMULATOR</span>
+        <span>ELEVATOR</span>
+      </a>
+      <a href="./zach/timers/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid var(--accent); color: var(--accent); padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
+        <span>⏳</span>
+        <span>TIMERS</span>
       </a>
     </div>
 
