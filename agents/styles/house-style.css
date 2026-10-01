@@ -1,0 +1,344 @@
+/**
+ * 8bitcn Retro Pixel Design System & Component Library (shadcn @8bitcn Theme)
+ * Hosted on Tailscale at /_style/house-style.css
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --background: #0d0e15;
+  --foreground: #f4f4f5;
+  --card: #151722;
+  --card-foreground: #f4f4f5;
+  --card-border: #2a2d3d;
+  --card-hover: #1c1e2d;
+  --popover: #151722;
+  --popover-foreground: #f4f4f5;
+  --primary: #4deeea;
+  --primary-foreground: #000000;
+  --secondary: #222533;
+  --secondary-foreground: #f4f4f5;
+  --muted: #1c1e2d;
+  --muted-foreground: #8a8f9f;
+  --accent: #ffe600;
+  --accent-foreground: #000000;
+  --accent-soft: rgba(77, 238, 234, 0.12);
+  --destructive: #ff2a6d;
+  --destructive-foreground: #ffffff;
+  --success: #05d554;
+  --success-foreground: #000000;
+  --warning: #f7b731;
+  --purple: #d355ff;
+  --border: #2a2d3d;
+  --input: #151722;
+  --ring: #4deeea;
+  --radius-sm: 0px;
+  --radius: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --font-sans: 'Silkscreen', 'JetBrains Mono', system-ui, monospace;
+  --font-heading: 'Press Start 2P', monospace;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  border-radius: 0 !important;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  image-rendering: pixelated;
+}
+
+/* Page Layout Shell */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.header-shell {
+  background: var(--card);
+  border-bottom: 2px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 0.875rem 1.25rem;
+  box-shadow: 0 4px 0px rgba(0, 0, 0, 0.4);
+}
+
+.header-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .header-shell { padding: 1rem 2rem; }
+  .header-container {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+}
+
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 1.25rem auto 4rem;
+  padding: 0 1rem;
+  flex-grow: 1;
+}
+
+@media (min-width: 768px) {
+  .container { padding: 0 2rem; }
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  color: #fff;
+  font-family: var(--font-heading);
+  letter-spacing: -0.03em;
+  line-height: 1.4;
+}
+
+h1 { font-size: 1.15rem; }
+h2 { font-size: 0.95rem; }
+h3 { font-size: 0.85rem; }
+
+@media (min-width: 768px) {
+  h1 { font-size: 1.35rem; }
+  h2 { font-size: 1.1rem; }
+  h3 { font-size: 0.95rem; }
+}
+
+p { color: var(--muted-foreground); margin-bottom: 0.75rem; }
+p:last-child { margin-bottom: 0; }
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+  transition: all 0.1s ease;
+}
+a:hover {
+  text-decoration: underline;
+  color: var(--accent);
+}
+
+/* 8-bit Grid Primitives */
+.grid-1 { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+.grid-2 { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+.grid-3 { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+
+@media (min-width: 768px) {
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* 8-bit Card Component */
+.card {
+  background-color: var(--card);
+  border: 2px solid var(--border);
+  box-shadow: 3px 3px 0px #000;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.1s ease;
+}
+
+.card-header {
+  padding: 0.875rem 1rem;
+  border-bottom: 2px solid var(--border);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.card-title {
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  color: var(--foreground);
+}
+
+.card-description {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  margin-top: 0.35rem;
+}
+
+.card-content {
+  padding: 1rem;
+  flex-grow: 1;
+}
+
+.card-footer {
+  padding: 0.75rem 1rem;
+  border-top: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* 8-bit Button Components */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  padding: 0.6rem 1rem;
+  border: 2px solid #000;
+  box-shadow: 2px 2px 0px #000;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  transition: transform 0.05s ease, box-shadow 0.05s ease;
+}
+
+.btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0px 0px 0px #000;
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border-color: #000;
+}
+.btn-primary:hover {
+  background-color: #38c8c5;
+  color: #000;
+  text-decoration: none;
+}
+
+.btn-secondary {
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  border-color: var(--border);
+}
+.btn-secondary:hover {
+  background-color: var(--card-hover);
+  color: #fff;
+  text-decoration: none;
+}
+
+.btn-sm {
+  font-size: 0.65rem;
+  padding: 0.4rem 0.65rem;
+}
+
+/* 8-bit Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  box-shadow: 1px 1px 0px #000;
+  text-transform: uppercase;
+}
+
+.badge-default { background: var(--secondary); color: var(--foreground); }
+.badge-warning { background: rgba(247, 183, 49, 0.15); color: var(--warning); border-color: var(--warning); }
+.badge-purple { background: rgba(211, 85, 255, 0.15); color: var(--purple); border-color: var(--purple); }
+.badge-success { background: rgba(5, 213, 84, 0.15); color: var(--success); border-color: var(--success); }
+
+.tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+}
+
+/* 8-bit Segmented Tabs */
+.tabs-wrapper {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.tabs-list {
+  display: flex;
+  align-items: center;
+  background-color: var(--card);
+  padding: 4px;
+  border: 2px solid var(--border);
+  box-shadow: 2px 2px 0px #000;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.tabs-trigger {
+  background: transparent;
+  border: none;
+  color: var(--muted-foreground);
+  font-family: var(--font-heading);
+  font-size: 0.7rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.1s ease;
+}
+
+.tabs-trigger:hover {
+  color: var(--foreground);
+}
+
+.tabs-trigger.active {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 2px 2px 0px #000;
+}
+
+.tabs-content {
+  display: none;
+}
+
+.tabs-content.active {
+  display: block;
+}
+
+.tab-iframe {
+  width: 100%;
+  height: 700px;
+  border: 2px solid var(--border);
+  background: #000;
+}
+
+/* Code & Preformatted */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: #000;
+  color: var(--primary);
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--border);
+}
+
+pre {
+  background: #000;
+  border: 2px solid var(--border);
+  box-shadow: 2px 2px 0px #000;
+  padding: 1rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
