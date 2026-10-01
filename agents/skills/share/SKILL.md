@@ -25,7 +25,7 @@ The `share` command is globally installed in `~/bin/share` (with aliases `host-r
 share /tmp/my-report.html --name banerry-analysis
 ```
 * Copies the file to `~/Public/banerry-analysis.html` (or `$XDG_PUBLICSHARE_DIR/banerry-analysis.html`).
-* Updates the central index at `https://panther.tail29c7da.ts.net/`.
+* Updates the central portal at `https://panther.tail29c7da.ts.net/` and tasks dashboard at `/tasks/`.
 * Outputs the live MagicDNS URL.
 
 ### B. Sharing a Multi-Artifact Task Dashboard ($SPEC_ID Folder)
@@ -43,7 +43,7 @@ share --task <spec_id> \
 ```
 * Creates `~/Public/<spec_id>/` (or `$XDG_PUBLICSHARE_DIR/<spec_id>/`) with an interactive, tabbed `index.html` Task Dashboard.
 * Copies the visual plan, written plan, spec, and symbol diff into that folder.
-* Adds a grouped entry to the main Reports Hub (`https://panther.tail29c7da.ts.net/`).
+* Adds a grouped entry to the Tasks Dashboard (`https://panther.tail29c7da.ts.net/tasks/`).
 
 ### C. Checking Status
 ```bash

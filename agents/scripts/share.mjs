@@ -368,6 +368,341 @@ function generateTaskDashboardHtml(meta) {
 </html>`;
 }
 
+function generatePortalHtml(items) {
+  const recentItems = items.filter(t => t.slug !== 'zach').slice(0, 4);
+  const recentHtml = recentItems.map(t => {
+    return `
+      <a href="${t.href}" class="recent-item">
+        <span class="recent-item-title">${escapeHtml(t.title)}</span>
+        <span class="recent-item-tag">${escapeHtml(t.project)}</span>
+      </a>
+    `;
+  }).join('\n');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Homo Stellaris • Portal</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="shortcut icon" href="/favicon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --surface: #0f172a;
+      --surface-hover: #162238;
+      --card-bg: #111a2e;
+      --border: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #64748b;
+      --accent: #38bdf8;
+      --purple: #c084fc;
+      --amber: #ffb703;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 100% 100%, rgba(192, 132, 252, 0.06) 0%, transparent 50%);
+      color: var(--text);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+    .wrapper {
+      width: 100%;
+      max-width: 720px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+    .portal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+    }
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .brand-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(192, 132, 252, 0.2));
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    .brand-title {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #fff;
+    }
+    .brand-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      margin-top: 2px;
+    }
+    .tailnet-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      color: #4ade80;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #4ade80;
+      box-shadow: 0 0 8px #4ade80;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .portal-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      position: relative;
+      overflow: hidden;
+    }
+    .portal-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+      background: transparent;
+      transition: background 0.2s ease;
+    }
+    .portal-card:hover {
+      transform: translateY(-4px);
+      border-color: #334155;
+      background: var(--surface-hover);
+    }
+    .portal-card-tasks:hover::before {
+      background: var(--accent);
+      box-shadow: 0 0 12px var(--accent);
+    }
+    .portal-card-zach:hover::before {
+      background: var(--amber);
+      box-shadow: 0 0 12px var(--amber);
+    }
+    .card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-icon {
+      font-size: 28px;
+    }
+    .card-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: #fff;
+    }
+    .card-desc {
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--text-muted);
+    }
+    .recent-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding-top: 12px;
+    }
+    .recent-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 10px;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--text);
+      text-decoration: none;
+      transition: background 0.1s ease;
+    }
+    .recent-item:hover {
+      background: rgba(56, 189, 248, 0.1);
+      color: var(--accent);
+    }
+    .recent-item-title {
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .recent-item-tag {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .card-cta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-top: auto;
+      padding-top: 8px;
+    }
+    .portal-card-tasks .card-cta { color: var(--accent); }
+    .portal-card-zach .card-cta { color: var(--amber); }
+    .quick-bar {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+    .quick-btn {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: all 0.1s ease;
+    }
+    .quick-btn:hover {
+      color: #fff;
+      border-color: #334155;
+    }
+    .portal-footer {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      font-family: var(--font-mono);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <header class="portal-header">
+      <div class="brand-wrap">
+        <div class="brand-icon">🪐</div>
+        <div>
+          <h1 class="brand-title">Homo Stellaris</h1>
+          <div class="brand-subtitle">panther • tailnet private cloud</div>
+        </div>
+      </div>
+      <div class="tailnet-badge">
+        <span class="status-dot"></span>
+        <span>TAILNET SECURE</span>
+      </div>
+    </header>
+
+    <main class="grid">
+      <!-- 1. Tasks & Agent Hub -->
+      <a href="/tasks/" class="portal-card portal-card-tasks">
+        <div class="card-top">
+          <span class="card-icon">📋</span>
+          <span class="card-badge">${items.length} Artifacts</span>
+        </div>
+        <div>
+          <h2 class="card-title">Tasks & Agents Dashboard</h2>
+          <p class="card-desc">Agent build pipelines, visual plans, symbol diffs, and feature task dashboards.</p>
+        </div>
+        ${recentHtml ? `
+        <div class="recent-list" onclick="event.stopPropagation();">
+          ${recentHtml}
+        </div>` : ''}
+        <div class="card-cta">
+          <span>Open Tasks Hub</span>
+          <span>➜</span>
+        </div>
+      </a>
+
+      <!-- 2. Zach's World -->
+      <a href="/zach/" class="portal-card portal-card-zach">
+        <div class="card-top">
+          <span class="card-icon">🌟</span>
+          <span class="card-badge">PWA App</span>
+        </div>
+        <div>
+          <h2 class="card-title">Zach's World</h2>
+          <p class="card-desc">Kid-friendly sensory timers & interactive elevator simulator for tablet.</p>
+        </div>
+        <div class="quick-bar" onclick="event.stopPropagation();">
+          <a href="/zach/lifts/" class="quick-btn">🛗 Elevator Simulator</a>
+          <a href="/zach/timers/" class="quick-btn">⏳ Sensory Timers</a>
+        </div>
+        <div class="card-cta">
+          <span>Open Zach's Hub</span>
+          <span>➜</span>
+        </div>
+      </a>
+    </main>
+
+    <footer class="portal-footer">
+      <span>panther.tail29c7da.ts.net</span>
+      <span>•</span>
+      <span>XDG_PUBLICSHARE_DIR</span>
+    </footer>
+  </div>
+</body>
+</html>`;
+}
+
 function updateIndexHtml() {
   if (!fs.existsSync(REPORTS_DIR)) return;
 
@@ -379,7 +714,7 @@ function updateIndexHtml() {
 
   // 1. Task folders and directory symlinks
   for (const d of entries) {
-    if (d.name.startsWith('.') || d.name === '_style') continue;
+    if (d.name.startsWith('.') || d.name === '_style' || d.name === 'tasks') continue;
     const folderPath = path.join(REPORTS_DIR, d.name);
     try {
       const stat = fs.statSync(folderPath);
@@ -406,7 +741,7 @@ function updateIndexHtml() {
       const indexStat = fs.statSync(indexPath);
       items.push({
         slug: d.name,
-        href: `./${d.name}/`,
+        href: `/${d.name}/`,
         title: meta.title || d.name,
         project: meta.project || 'tasks',
         status: meta.status || 'COMPLETED',
@@ -442,7 +777,7 @@ function updateIndexHtml() {
 
       items.push({
         slug,
-        href: `./${d.name}`,
+        href: `/${d.name}`,
         title,
         project,
         status: 'COMPLETED',
@@ -461,7 +796,9 @@ function updateIndexHtml() {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Tasks</title>
+  <title>Tasks Dashboard</title>
+  <link rel="icon" type="image/svg+xml" href="/tasks/favicon.svg">
+  <link rel="shortcut icon" href="/tasks/favicon.ico">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -597,15 +934,19 @@ function updateIndexHtml() {
 <body>
   <div class="wrapper">
     <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
-      <a href="./zach/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid #ffb703; color: #ffb703; padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
+      <a href="/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid var(--border); color: var(--text-muted); padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
+        <span>🪐</span>
+        <span>PORTAL</span>
+      </a>
+      <a href="/zach/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid #ffb703; color: #ffb703; padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
         <span>⭐</span>
         <span>ZACH'S APPS</span>
       </a>
-      <a href="./zach/lifts/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid #a855f7; color: #c084fc; padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
+      <a href="/zach/lifts/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid #a855f7; color: #c084fc; padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
         <span>🛗</span>
         <span>ELEVATOR</span>
       </a>
-      <a href="./zach/timers/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid var(--accent); color: var(--accent); padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
+      <a href="/zach/timers/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid var(--accent); color: var(--accent); padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
         <span>⏳</span>
         <span>TIMERS</span>
       </a>
@@ -772,9 +1113,18 @@ function updateIndexHtml() {
 </body>
 </html>`;
 
-  const indexFile = path.join(REPORTS_DIR, 'index.html');
-  fs.writeFileSync(indexFile, html, 'utf-8');
-  try { fs.chmodSync(indexFile, 0o644); } catch {}
+  // 1. Write tasks dashboard to /tasks/index.html
+  const tasksDir = path.join(REPORTS_DIR, 'tasks');
+  fs.mkdirSync(tasksDir, { recursive: true });
+  const tasksIndexFile = path.join(tasksDir, 'index.html');
+  fs.writeFileSync(tasksIndexFile, html, 'utf-8');
+  try { fs.chmodSync(tasksIndexFile, 0o644); } catch {}
+
+  // 2. Write root portal to /index.html
+  const portalHtml = generatePortalHtml(items);
+  const portalIndexFile = path.join(REPORTS_DIR, 'index.html');
+  fs.writeFileSync(portalIndexFile, portalHtml, 'utf-8');
+  try { fs.chmodSync(portalIndexFile, 0o644); } catch {}
 }
 
 function hostTaskDashboard(args) {
@@ -846,7 +1196,8 @@ function hostTaskDashboard(args) {
   console.log(`\nTask Dashboard Created for '${cleanSpecId}'`);
   console.log(`Folder:    ${taskDir}`);
   console.log(`Dashboard: ${dashboardUrl}`);
-  console.log(`Hub:       ${magicDns ? `${magicDns}/` : 'http://localhost:8787/'}\n`);
+  console.log(`Tasks Hub: ${magicDns ? `${magicDns}/tasks/` : 'http://localhost:8787/tasks/'}`);
+  console.log(`Portal:    ${magicDns ? `${magicDns}/` : 'http://localhost:8787/'}\n`);
 
   return dashboardUrl;
 }
@@ -894,8 +1245,14 @@ ALIASES:
   if (args.includes('--refresh') || (args.length === 1 && args.includes('--status'))) {
     updateIndexHtml();
     const { ip, magicDns } = getTailscaleInfo();
+    const rootUrl = magicDns ? `${magicDns}/` : (ip ? `http://${ip}:8787/` : `http://localhost:8787/`);
+    const tasksUrl = magicDns ? `${magicDns}/tasks/` : (ip ? `http://${ip}:8787/tasks/` : `http://localhost:8787/tasks/`);
+    const zachUrl = magicDns ? `${magicDns}/zach/` : (ip ? `http://${ip}:8787/zach/` : `http://localhost:8787/zach/`);
     console.log(`\nTailscale Share Hub Status:`);
     console.log(`Location:   ${REPORTS_DIR}`);
+    console.log(`Portal:     ${rootUrl}`);
+    console.log(`Tasks:      ${tasksUrl}`);
+    console.log(`Zach:       ${zachUrl}`);
     if (magicDns) console.log(`MagicDNS:   ${magicDns}`);
     if (ip)       console.log(`Tailnet IP: http://${ip}:8787/`);
     console.log(`Local:      file://${REPORTS_DIR}/index.html\n`);
@@ -920,12 +1277,14 @@ ALIASES:
 
   const { ip, magicDns } = getTailscaleInfo();
   const phoneUrl = magicDns ? `${magicDns}/${slug}.html` : (ip ? `http://${ip}:8787/${slug}.html` : `http://localhost:8787/${slug}.html`);
-  const hubUrl = magicDns ? `${magicDns}/` : (ip ? `http://${ip}:8787/` : `http://localhost:8787/`);
+  const tasksUrl = magicDns ? `${magicDns}/tasks/` : (ip ? `http://${ip}:8787/tasks/` : `http://localhost:8787/tasks/`);
+  const portalUrl = magicDns ? `${magicDns}/` : (ip ? `http://${ip}:8787/` : `http://localhost:8787/`);
 
   console.log(`\nHosted Report: '${slug}'`);
   console.log(`Saved to:   ${destFile}`);
   console.log(`Phone / Remote URL: ${phoneUrl}`);
-  console.log(`Reports Hub:        ${hubUrl}`);
+  console.log(`Tasks Hub:          ${tasksUrl}`);
+  console.log(`Portal:             ${portalUrl}`);
   console.log(`Local:              file://${destFile}\n`);
 
   if (args.includes('--open')) {
