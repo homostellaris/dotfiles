@@ -45,18 +45,16 @@ if [ -d "/usr/share/omarchy/default/agents/skills" ]; then
   done
 fi
 
-# Symlink scripts to ~/bin and ~/.local/bin
-mkdir -p "$HOME/bin" "$HOME/.local/bin"
-ln -nsf "$DIR/scripts/build.ts" "$HOME/bin/build"
+# Symlink scripts to ~/.local/bin
+mkdir -p "$HOME/.local/bin"
 ln -nsf "$DIR/scripts/build.ts" "$HOME/.local/bin/build"
 chmod +x "$DIR/scripts/build.ts"
 
-ln -nsf "$DIR/scripts/share.mjs" "$HOME/bin/share"
 ln -nsf "$DIR/scripts/share.mjs" "$HOME/.local/bin/share"
-ln -nsf "$DIR/scripts/share.mjs" "$HOME/bin/host-report"
 ln -nsf "$DIR/scripts/share.mjs" "$HOME/.local/bin/host-report"
-ln -nsf "$DIR/scripts/share.mjs" "$HOME/bin/serve-report"
 ln -nsf "$DIR/scripts/share.mjs" "$HOME/.local/bin/serve-report"
+ln -nsf "$DIR/scripts/share-server.mjs" "$HOME/.local/bin/share-server.mjs"
+chmod +x "$DIR/scripts/share.mjs" "$DIR/scripts/share-server.mjs"
 # Determine share target directory (XDG_PUBLICSHARE_DIR or ~/Public)
 SHARE_TARGET="${XDG_PUBLICSHARE_DIR:-$HOME/Public}"
 [ "$SHARE_TARGET" = "$HOME/" ] && SHARE_TARGET="$HOME/Public"

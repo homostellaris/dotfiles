@@ -18,7 +18,7 @@ Use this skill when you need to publish standalone HTML reports, visual plans, s
 
 ## 1. CLI Commands
 
-The `share` command is globally installed in `~/bin/share` (with aliases `host-report` and `serve-report`).
+The `share` command is globally installed in `~/.local/bin/share` (with aliases `host-report` and `serve-report`).
 
 ### A. Sharing a Single File
 ```bash
