@@ -11,9 +11,36 @@ import path from 'node:path';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
 
-const SHARE_DIR = path.join(os.homedir(), 'share');
-const LEGACY_DIR = path.join(os.homedir(), '.local/share/agent-reports');
-const REPORTS_DIR = fs.existsSync(SHARE_DIR) ? SHARE_DIR : LEGACY_DIR;
+function resolveShareDir() {
+  if (process.env.SHARE_DIR && process.env.SHARE_DIR.trim() !== '') {
+    return path.resolve(process.env.SHARE_DIR);
+  }
+  if (process.env.XDG_PUBLICSHARE_DIR && process.env.XDG_PUBLICSHARE_DIR.trim() !== '' && process.env.XDG_PUBLICSHARE_DIR !== os.homedir()) {
+    return path.resolve(process.env.XDG_PUBLICSHARE_DIR);
+  }
+  try {
+    const queried = execSync('xdg-user-dir PUBLICSHARE 2>/dev/null', { encoding: 'utf-8' }).trim();
+    if (queried && queried !== os.homedir() && fs.existsSync(queried)) {
+      return queried;
+    }
+  } catch {}
+
+  const defaultPublic = path.join(os.homedir(), 'Public');
+  if (fs.existsSync(defaultPublic)) return defaultPublic;
+
+  const legacyWorkTasks = path.join(os.homedir(), 'Work', 'tasks');
+  if (fs.existsSync(legacyWorkTasks)) return legacyWorkTasks;
+
+  const legacyShare = path.join(os.homedir(), 'share');
+  if (fs.existsSync(legacyShare)) return legacyShare;
+
+  const legacyAgentReports = path.join(os.homedir(), '.local/share/agent-reports');
+  if (fs.existsSync(legacyAgentReports)) return legacyAgentReports;
+
+  return defaultPublic;
+}
+
+const REPORTS_DIR = resolveShareDir();
 
 function getTailscaleInfo() {
   let hostname = 'panther';
@@ -346,35 +373,88 @@ function updateIndexHtml() {
 
   const entries = fs.readdirSync(REPORTS_DIR, { withFileTypes: true });
 
-  // Only list task folders (directories with an index.html)
-  const taskFolders = entries
-    .filter(d => d.isDirectory() && !d.name.startsWith('.') && d.name !== '_style')
-    .map(d => {
-      const folderPath = path.join(REPORTS_DIR, d.name);
-      const indexPath = path.join(folderPath, 'index.html');
-      const metaPath = path.join(folderPath, 'metadata.json');
-      if (!fs.existsSync(indexPath)) return null;
+  const seenRealPaths = new Set();
+  const seenSlugs = new Set();
+  const items = [];
 
-      let meta = { specId: d.name, title: d.name, project: 'starfocus', status: 'PLAN REVIEW' };
+  // 1. Task folders and directory symlinks
+  for (const d of entries) {
+    if (d.name.startsWith('.') || d.name === '_style') continue;
+    const folderPath = path.join(REPORTS_DIR, d.name);
+    try {
+      const stat = fs.statSync(folderPath);
+      if (!stat.isDirectory()) continue;
+
+      const indexPath = path.join(folderPath, 'index.html');
+      if (!fs.existsSync(indexPath)) continue;
+
+      const real = fs.realpathSync(folderPath);
+      if (seenRealPaths.has(real)) continue;
+      seenRealPaths.add(real);
+      seenSlugs.add(d.name);
+
+      const metaPath = path.join(folderPath, 'metadata.json');
+      let meta = { specId: d.name, title: d.name, project: 'tasks', status: 'COMPLETED' };
       if (fs.existsSync(metaPath)) {
         try { meta = { ...meta, ...JSON.parse(fs.readFileSync(metaPath, 'utf-8')) }; } catch {}
+      } else {
+        const content = fs.readFileSync(indexPath, 'utf-8');
+        const m = content.match(/<title>([^<]+)<\/title>/i);
+        if (m) meta.title = m[1].trim();
       }
 
-      const stat = fs.statSync(indexPath);
-      return {
+      const indexStat = fs.statSync(indexPath);
+      items.push({
         slug: d.name,
+        href: `./${d.name}/`,
         title: meta.title || d.name,
-        project: meta.project || 'other',
-        status: meta.status || 'PLAN REVIEW',
+        project: meta.project || 'tasks',
+        status: meta.status || 'COMPLETED',
+        mtime: indexStat.mtime.getTime(),
+        timeAgo: formatTimeAgo(indexStat.mtime),
+        fullDate: indexStat.mtime.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }),
+      });
+    } catch {}
+  }
+
+  // 2. Standalone HTML reports
+  for (const d of entries) {
+    if (d.name.startsWith('.') || d.name === 'index.html' || !d.name.endsWith('.html')) continue;
+    const slug = d.name.replace(/\.html$/, '');
+    if (seenSlugs.has(slug)) continue;
+
+    const filePath = path.join(REPORTS_DIR, d.name);
+    try {
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) continue;
+
+      const real = fs.realpathSync(filePath);
+      if (seenRealPaths.has(real)) continue;
+      seenRealPaths.add(real);
+
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const m = content.match(/<title>([^<]+)<\/title>/i);
+      let title = m ? m[1].trim() : slug.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+      let project = 'reports';
+      if (/banerry/i.test(d.name) || /banerry/i.test(title)) project = 'banerry';
+      else if (/zach/i.test(d.name) || /zach/i.test(title)) project = 'zach';
+
+      items.push({
+        slug,
+        href: `./${d.name}`,
+        title,
+        project,
+        status: 'COMPLETED',
         mtime: stat.mtime.getTime(),
         timeAgo: formatTimeAgo(stat.mtime),
         fullDate: stat.mtime.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }),
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.mtime - a.mtime);
+      });
+    } catch {}
+  }
 
-  const tasksJson = JSON.stringify(taskFolders);
+  items.sort((a, b) => b.mtime - a.mtime);
+  const tasksJson = JSON.stringify(items);
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -516,6 +596,17 @@ function updateIndexHtml() {
 </head>
 <body>
   <div class="wrapper">
+    <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+      <a href="./timer-factory/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid var(--accent); color: var(--accent); padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
+        <span>⏳</span>
+        <span>ZACH'S SENSORY TIMERS</span>
+      </a>
+      <a href="./lift/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid #a855f7; color: #c084fc; padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
+        <span>🛗</span>
+        <span>ZACH'S ELEVATOR SIMULATOR</span>
+      </a>
+    </div>
+
     <div class="controls">
       <input type="text" id="filterInput" class="filter-input" placeholder="SEARCH TASKS..." autofocus autocomplete="off">
       <div class="group-bar">
@@ -595,7 +686,7 @@ function updateIndexHtml() {
             <ul class="link-list">
               \${groups[bucket].map(t => \`
                 <li class="link-item">
-                  <a href="./\${t.slug}/" class="bare-link">\${escapeHtml(t.title)}</a>
+                  <a href="\${t.href || \`./\${t.slug}/\`}" class="bare-link">\${escapeHtml(t.title)}</a>
                 </li>
               \`).join('')}
             </ul>
@@ -615,7 +706,7 @@ function updateIndexHtml() {
             <ul class="link-list">
               \${groups[repo].map(t => \`
                 <li class="link-item">
-                  <a href="./\${t.slug}/" class="bare-link">\${escapeHtml(t.title)}</a>
+                  <a href="\${t.href || \`./\${t.slug}/\`}" class="bare-link">\${escapeHtml(t.title)}</a>
                 </li>
               \`).join('')}
             </ul>
@@ -644,7 +735,7 @@ function updateIndexHtml() {
             <ul class="link-list">
               \${groups[st].map(t => \`
                 <li class="link-item">
-                  <a href="./\${t.slug}/" class="bare-link">\${escapeHtml(t.title)}</a>
+                  <a href="\${t.href || \`./\${t.slug}/\`}" class="bare-link">\${escapeHtml(t.title)}</a>
                 </li>
               \`).join('')}
             </ul>

@@ -46,6 +46,20 @@ Here is the specification details.
     expect(spec?.title.toLowerCase()).toContain("use next dev loop skill");
   });
 
+  it("discovers spec by direct file path", () => {
+    const testOrchestrator = new BuildOrchestrator("dummy");
+    const samplePath = path.join(
+      os.homedir(),
+      "Work",
+      "Reality Sculptor",
+      "todos",
+      "use-next-dev-loop-skill_9dxlucom.md"
+    );
+    const spec = testOrchestrator.discoverSpec(samplePath);
+    expect(spec).not.toBeNull();
+    expect(spec?.identifier).toBe("use-next-dev-loop-skill_9dxlucom");
+  });
+
   it("evaluates CI rollup checks properly", () => {
     expect(orchestrator.evaluateCiChecks({ statusCheckRollup: [] })).toBe("PASSED");
 

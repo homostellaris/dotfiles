@@ -9,7 +9,7 @@ Use this skill when you need to publish standalone HTML reports, visual plans, s
 
 > [!IMPORTANT]
 > **Strict Boundary & Project Independence**:
-> The `house-style` component library applies **EXCLUSIVELY** to standalone HTML artifacts and task dashboards hosted in `~/share/`.
+> The `house-style` component library applies **EXCLUSIVELY** to standalone HTML artifacts and task dashboards hosted in `$XDG_PUBLICSHARE_DIR` (defaulting to `~/Public/`, with legacy symlink `~/share/`).
 > When authoring or editing code inside actual application repositories (e.g. `~/code/homostellaris/*`):
 > - **NEVER** import or inject `house-style.css` or `house-style.js` into project source code.
 > - **ALWAYS** adhere strictly to that specific project's own styling approach, design tokens, and local component libraries.
@@ -24,7 +24,7 @@ The `share` command is globally installed in `~/bin/share` (with aliases `host-r
 ```bash
 share /tmp/my-report.html --name banerry-analysis
 ```
-* Copies the file to `~/share/banerry-analysis.html`.
+* Copies the file to `~/Public/banerry-analysis.html` (or `$XDG_PUBLICSHARE_DIR/banerry-analysis.html`).
 * Updates the central index at `https://panther.tail29c7da.ts.net/`.
 * Outputs the live MagicDNS URL.
 
@@ -41,7 +41,7 @@ share --task <spec_id> \
       --pr-number <number> \
       --symboldiff <path/to/symboldiff.html>
 ```
-* Creates `~/share/<spec_id>/` with an interactive, tabbed `index.html` Task Dashboard.
+* Creates `~/Public/<spec_id>/` (or `$XDG_PUBLICSHARE_DIR/<spec_id>/`) with an interactive, tabbed `index.html` Task Dashboard.
 * Copies the visual plan, written plan, spec, and symbol diff into that folder.
 * Adds a grouped entry to the main Reports Hub (`https://panther.tail29c7da.ts.net/`).
 

@@ -20,7 +20,7 @@ Cypress tests should be organised such that they mirror the route they are testi
 # Agent Skills
 
 Common automation skills and artifact sharing are located under `agents/skills/`:
-- **`share`**: Publish standalone HTML reports, visual plans, and multi-file task dashboards (`~/share/<spec_id>/`) using the Shadcn house style.
+- **`share`**: Publish standalone HTML reports, visual plans, and multi-file task dashboards (`$XDG_PUBLICSHARE_DIR/<spec_id>/`, defaulting to `~/Public/<spec_id>/`, with legacy symlinks `~/share/` and `tasks/`) using the Shadcn house style.
 - **`symboldiff`**: Generate symbol-level code reviews with interactive visualization.
 - **`commit-and-push`**: Co-author Git commits following Gitmoji standards.
 - **`check-pr-run`**: Monitor and report GitHub Actions CI status.

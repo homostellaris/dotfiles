@@ -5,11 +5,39 @@ import os from "node:os";
 import child_process from "node:child_process";
 import { parseArgs } from "node:util";
 
-const SPEC_DIRECTORY = path.join(os.homedir(), "obsidian", "reality-sculptor", "todos");
-const VAULT_DIRECTORY = path.join(os.homedir(), "obsidian", "reality-sculptor");
+const POSSIBLE_SPEC_DIRS = [
+  process.env.TODOS_DIR,
+  path.join(os.homedir(), "Work", "Reality Sculptor", "todos"),
+  path.join(os.homedir(), "obsidian", "reality-sculptor", "todos"),
+].filter(Boolean) as string[];
+
+const POSSIBLE_VAULT_DIRS = [
+  process.env.VAULT_DIR,
+  path.join(os.homedir(), "Work", "Reality Sculptor"),
+  path.join(os.homedir(), "obsidian", "reality-sculptor"),
+].filter(Boolean) as string[];
+
+const SPEC_DIRECTORY = POSSIBLE_SPEC_DIRS.find((d) => fs.existsSync(d)) || POSSIBLE_SPEC_DIRS[0];
+const VAULT_DIRECTORY = POSSIBLE_VAULT_DIRS.find((d) => fs.existsSync(d)) || POSSIBLE_VAULT_DIRS[0];
 const STATE_DIRECTORY = path.join(os.homedir(), ".local", "share", "agent-builds");
 const REPOSITORIES_DIRECTORY = path.join(os.homedir(), "code", "homostellaris");
 const ANTIGRAVITY_APP_DATA = path.join(os.homedir(), ".gemini", "antigravity-cli");
+
+function getTailscaleBaseUrl(): string {
+  try {
+    const statusJson = child_process.spawnSync("tailscale", ["status", "--json"], {
+      encoding: "utf-8",
+      timeout: 2000,
+    });
+    if (statusJson.status === 0 && statusJson.stdout.trim()) {
+      const status = JSON.parse(statusJson.stdout);
+      if (status.Self?.DNSName) {
+        return `https://${status.Self.DNSName.replace(/\.$/, "")}`;
+      }
+    }
+  } catch {}
+  return "https://omarchy.tail29c7da.ts.net";
+}
 
 export interface SpecMetadata {
   identifier: string;
@@ -116,27 +144,44 @@ export class BuildOrchestrator {
 
   discoverSpec(query: string): SpecMetadata | null {
     const candidatePaths: string[] = [];
+
+    if (fs.existsSync(query) && fs.statSync(query).isFile()) {
+      candidatePaths.push(path.resolve(query));
+    }
+
     const normalizedQuery = query.replace(/\.md$/, "");
 
-    const exactPath = path.join(SPEC_DIRECTORY, `${normalizedQuery}.md`);
-    if (fs.existsSync(exactPath)) {
-      candidatePaths.push(exactPath);
+    for (const dir of POSSIBLE_SPEC_DIRS) {
+      const exactPath = path.join(dir, `${normalizedQuery}.md`);
+      if (fs.existsSync(exactPath) && !candidatePaths.includes(exactPath)) {
+        candidatePaths.push(exactPath);
+      }
     }
 
-    const exactVault = path.join(VAULT_DIRECTORY, `${normalizedQuery}.md`);
-    if (fs.existsSync(exactVault)) {
-      candidatePaths.push(exactVault);
+    for (const dir of POSSIBLE_VAULT_DIRS) {
+      const exactVault = path.join(dir, `${normalizedQuery}.md`);
+      if (fs.existsSync(exactVault) && !candidatePaths.includes(exactVault)) {
+        candidatePaths.push(exactVault);
+      }
     }
 
-    if (candidatePaths.length === 0 && fs.existsSync(SPEC_DIRECTORY)) {
-      const entries = fs.readdirSync(SPEC_DIRECTORY);
-      for (const entry of entries) {
-        if (entry.endsWith(".md")) {
-          const stem = entry.replace(/\.md$/, "");
-          if (stem.includes(normalizedQuery)) {
-            candidatePaths.push(path.join(SPEC_DIRECTORY, entry));
+    if (candidatePaths.length === 0) {
+      for (const dir of POSSIBLE_SPEC_DIRS) {
+        if (fs.existsSync(dir)) {
+          const entries = fs.readdirSync(dir);
+          for (const entry of entries) {
+            if (entry.endsWith(".md")) {
+              const stem = entry.replace(/\.md$/, "");
+              if (stem.includes(normalizedQuery)) {
+                const full = path.join(dir, entry);
+                if (!candidatePaths.includes(full)) {
+                  candidatePaths.push(full);
+                }
+              }
+            }
           }
         }
+        if (candidatePaths.length > 0) break;
       }
     }
 
@@ -416,10 +461,10 @@ export class BuildOrchestrator {
       try {
         const pkgData = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
         const scripts = pkgData.scripts || {};
-        if ("test" in scripts) {
-          command = ["bun", "run", "test"];
-        } else if ("unit" in scripts) {
+        if ("unit" in scripts) {
           command = ["bun", "run", "unit"];
+        } else if ("test" in scripts) {
+          command = ["bun", "run", "test"];
         }
       } catch {}
     }
@@ -584,7 +629,7 @@ export class BuildOrchestrator {
 
   handleAwaitPlanApproval(): void {
     console.log("⏸️  Visual plan is waiting for your review:");
-    console.log(`🔗 ${this.state?.visual_plan_url || "https://panther.tail29c7da.ts.net/"}`);
+    console.log(`🔗 ${this.state?.visual_plan_url || `${getTailscaleBaseUrl()}/`}`);
     console.log(`👉 Reply 'approve' on WhatsApp or run 'build ${this.spec?.identifier}' after approving.`);
   }
 
@@ -595,28 +640,47 @@ export class BuildOrchestrator {
     const worktreePath = this.state.worktree_dir;
     fs.mkdirSync(path.dirname(worktreePath), { recursive: true });
 
+    // Clean up any stale git worktree registration
+    runCommand(["git", "worktree", "prune"], { cwd: this.state.repo_dir, capture: true });
+
     if (fs.existsSync(worktreePath)) {
-      fs.rmSync(worktreePath, { recursive: true, force: true });
+      runCommand(["git", "worktree", "remove", "--force", worktreePath], {
+        cwd: this.state.repo_dir,
+        capture: true,
+      });
+      if (fs.existsSync(worktreePath)) {
+        fs.rmSync(worktreePath, { recursive: true, force: true });
+      }
     }
 
-    const command = [
-      "git",
-      "worktree",
-      "add",
-      "-b",
-      this.state.branch_name,
-      worktreePath,
-      "HEAD",
-    ];
+    // Check if the feature branch already exists
+    const branchCheck = runCommand(["git", "rev-parse", "--verify", this.state.branch_name], {
+      cwd: this.state.repo_dir,
+      capture: true,
+    });
+    const branchExists = branchCheck.status === 0;
+
+    const command = branchExists
+      ? ["git", "worktree", "add", worktreePath, this.state.branch_name]
+      : ["git", "worktree", "add", "-b", this.state.branch_name, worktreePath, "HEAD"];
+
     const res = runCommand(command, { cwd: this.state.repo_dir, capture: true });
     if (res.status !== 0) {
       console.error(`❌ Failed to create git worktree: ${res.stderr}`);
       return 1;
     }
 
-    const envFile = path.join(this.state.repo_dir, ".env.local");
-    if (fs.existsSync(envFile)) {
-      fs.copyFileSync(envFile, path.join(worktreePath, ".env.local"));
+    for (const envName of [".env", ".env.local"]) {
+      const envFile = path.join(this.state.repo_dir, envName);
+      if (fs.existsSync(envFile)) {
+        fs.copyFileSync(envFile, path.join(worktreePath, envName));
+      }
+    }
+
+    // Ensure dependencies are installed in worktree if package.json exists
+    if (fs.existsSync(path.join(worktreePath, "package.json"))) {
+      console.log("📦 Installing dependencies in worktree...");
+      runCommand(["bun", "install"], { cwd: worktreePath, capture: false });
     }
 
     console.log("✅ Worktree and branch initialized successfully.");
@@ -922,7 +986,7 @@ export class BuildOrchestrator {
       }
 
       if (paneId) {
-        const startCmd = [herdrBin, "agent", "start", agentName, "--pane", paneId];
+        const startCmd = [herdrBin, "agent", "start", agentName, "--kind", "agy", "--pane", paneId];
         runCommand(startCmd, { capture: true });
 
         const promptCmd = [
@@ -975,10 +1039,11 @@ export class BuildOrchestrator {
     if (!this.spec || !this.state) return "";
 
     const shareBin = findExecutable("share", [
+      path.join(os.homedir(), ".local", "bin", "share"),
       path.join(os.homedir(), "bin", "share"),
       findExecutable("host-report") || "",
     ]);
-    const dashboardUrl = `https://panther.tail29c7da.ts.net/${this.spec.identifier}/`;
+    const dashboardUrl = `${getTailscaleBaseUrl()}/${this.spec.identifier}/`;
     if (!shareBin || !fs.existsSync(shareBin)) {
       return dashboardUrl;
     }
@@ -1057,6 +1122,7 @@ export class BuildOrchestrator {
 
   publishTailscaleReport(reportPath: string, slug: string): void {
     const shareBin = findExecutable("share", [
+      path.join(os.homedir(), ".local", "bin", "share"),
       path.join(os.homedir(), "bin", "share"),
       findExecutable("host-report") || "",
     ]);
