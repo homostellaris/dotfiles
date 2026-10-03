@@ -24,6 +24,7 @@ Common automation skills and artifact sharing are located under `agents/skills/`
 - **`symboldiff`**: Generate symbol-level code reviews with interactive visualization.
 - **`commit-and-push`**: Co-author Git commits following Gitmoji standards.
 - **`check-pr-run`**: Monitor and report GitHub Actions CI status.
+- **`omarchy-log`**: Record, structure, and maintain systematic incident, debugging, and system configuration logs in the user's Obsidian vault (`~/Work/Reality Sculptor/Omarchy log/`).
 
 
 
