@@ -98,7 +98,7 @@ const server = http.createServer((req, res) => {
 
   const ext = path.extname(filePath).toLowerCase();
   let contentType = MIME_TYPES[ext] || 'application/octet-stream';
-  if (path.basename(filePath) === 'timers' || ext === '.json') {
+  if (filePath.endsWith(path.join('api', 'timers')) || ext === '.json') {
     contentType = 'application/json; charset=utf-8';
   }
 
