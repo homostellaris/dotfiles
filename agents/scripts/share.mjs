@@ -51,6 +51,7 @@ function getTailscaleInfo() {
     const statusJson = execSync('tailscale status --json 2>/dev/null', { encoding: 'utf-8', timeout: 1000 });
     const status = JSON.parse(statusJson);
     if (status.Self) {
+      hostname = status.Self.HostName || hostname;
       ip = status.Self.TailscaleIPs?.[0] || ip;
       magicDns = status.Self.DNSName ? `https://${status.Self.DNSName.replace(/\.$/, '')}` : magicDns;
     }
@@ -63,9 +64,20 @@ function getTailscaleInfo() {
   return { hostname, ip, magicDns };
 }
 
-function escapeHtml(str) {
+function decodeHtmlEntities(str) {
   if (!str) return '';
   return String(str)
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&#39;/g, "'");
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return decodeHtmlEntities(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -368,23 +380,39 @@ function generateTaskDashboardHtml(meta) {
 </html>`;
 }
 
-function generatePortalHtml(items) {
-  const recentItems = items.filter(t => t.slug !== 'zach').slice(0, 4);
-  const recentHtml = recentItems.map(t => {
-    return `
-      <a href="${t.href}" class="recent-item">
-        <span class="recent-item-title">${escapeHtml(t.title)}</span>
-        <span class="recent-item-tag">${escapeHtml(t.project)}</span>
-      </a>
-    `;
-  }).join('\n');
+function generatePortalHtml(items, tailscaleInfo = {}) {
+  const hostname = tailscaleInfo.hostname || 'omarchy';
+  const ip = tailscaleInfo.ip || '100.68.211.23';
+  const magicDns = tailscaleInfo.magicDns || 'https://omarchy.tail29c7da.ts.net';
+
+  // Distinct groups
+  const tasksItems = items.filter(t => !['zach', 'lift', 'timer-factory', 'briefs'].includes(t.slug));
+  const recentTasks = tasksItems.slice(0, 4);
+
+  const banerryItems = items.filter(t => t.project === 'banerry');
+
+  const recentTasksHtml = recentTasks.map(t => `
+    <a href="${t.href}" class="recent-item">
+      <span class="recent-item-title">${escapeHtml(t.title)}</span>
+      <span class="recent-item-tag">${escapeHtml(t.project)}</span>
+    </a>
+  `).join('\n');
+
+  const banerryHtml = banerryItems.map(t => `
+    <a href="${t.href}" class="recent-item">
+      <span class="recent-item-title">${escapeHtml(t.title)}</span>
+      <span class="recent-item-tag">promo</span>
+    </a>
+  `).join('\n');
+
+  const allItemsJson = JSON.stringify(items);
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Homo Stellaris • Portal</title>
+  <title>Homo Stellaris • Tailnet Portal</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="shortcut icon" href="/favicon.ico">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -392,16 +420,19 @@ function generatePortalHtml(items) {
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #090d16;
-      --surface: #0f172a;
-      --surface-hover: #162238;
-      --card-bg: #111a2e;
-      --border: #1e293b;
+      --bg: #07090e;
+      --surface: #0e1322;
+      --surface-hover: #161e33;
+      --card-bg: #0d1220;
+      --border: #1a2236;
+      --border-hover: #2e3a5a;
       --text: #f8fafc;
-      --text-muted: #64748b;
+      --text-muted: #73849f;
       --accent: #38bdf8;
+      --cyan: #00f0ff;
       --purple: #c084fc;
       --amber: #ffb703;
+      --green: #22c55e;
       --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
     }
@@ -409,24 +440,26 @@ function generatePortalHtml(items) {
     body {
       background: var(--bg);
       background-image: 
-        radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.08) 0%, transparent 50%),
-        radial-gradient(circle at 100% 100%, rgba(192, 132, 252, 0.06) 0%, transparent 50%);
+        radial-gradient(circle at 20% 0%, rgba(56, 189, 248, 0.09) 0%, transparent 45%),
+        radial-gradient(circle at 80% 0%, rgba(192, 132, 252, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 50% 100%, rgba(34, 197, 94, 0.05) 0%, transparent 50%);
       color: var(--text);
       font-family: var(--font-sans);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      padding: 32px 16px;
+      padding: 32px 16px 64px;
     }
     .wrapper {
       width: 100%;
-      max-width: 720px;
+      max-width: 980px;
       display: flex;
       flex-direction: column;
-      gap: 32px;
+      gap: 28px;
     }
+
+    /* Portal Header */
     .portal-header {
       display: flex;
       align-items: center;
@@ -442,19 +475,19 @@ function generatePortalHtml(items) {
       gap: 14px;
     }
     .brand-icon {
-      width: 44px;
-      height: 44px;
-      border-radius: 12px;
-      background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(192, 132, 252, 0.2));
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(192, 132, 252, 0.25));
+      border: 1px solid rgba(255, 255, 255, 0.15);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 22px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      font-size: 24px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
     }
     .brand-title {
-      font-size: 20px;
+      font-size: 22px;
       font-weight: 800;
       letter-spacing: -0.02em;
       color: #fff;
@@ -469,34 +502,76 @@ function generatePortalHtml(items) {
       font-family: var(--font-mono);
       font-size: 11px;
       font-weight: 600;
-      padding: 4px 10px;
+      padding: 6px 12px;
       border-radius: 999px;
       background: rgba(34, 197, 94, 0.12);
-      border: 1px solid rgba(34, 197, 94, 0.3);
+      border: 1px solid rgba(34, 197, 94, 0.35);
       color: #4ade80;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
     }
     .status-dot {
-      width: 6px;
-      height: 6px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       background: #4ade80;
-      box-shadow: 0 0 8px #4ade80;
+      box-shadow: 0 0 10px #4ade80;
+      animation: pulse 2s infinite ease-in-out;
     }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(0.9); }
+    }
+
+    /* Fast Nav Bar */
+    .fast-nav {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .fast-nav-link {
+      font-size: 12px;
+      font-family: var(--font-mono);
+      padding: 6px 12px;
+      border-radius: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .fast-nav-link:hover {
+      background: var(--surface-hover);
+      color: #fff;
+      border-color: var(--border-hover);
+      transform: translateY(-1px);
+    }
+    .fast-nav-link.active-blue:hover { border-color: var(--accent); color: var(--accent); }
+    .fast-nav-link.active-amber:hover { border-color: var(--amber); color: var(--amber); }
+    .fast-nav-link.active-green:hover { border-color: var(--green); color: var(--green); }
+    .fast-nav-link.active-purple:hover { border-color: var(--purple); color: var(--purple); }
+
+    /* Hub Grid */
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
       gap: 20px;
     }
+    @media (max-width: 500px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    /* Portal Card (Container <div> - NO NESTED <a> BUG) */
     .portal-card {
       background: var(--card-bg);
       border: 1px solid var(--border);
       border-radius: 16px;
       padding: 24px;
-      text-decoration: none;
-      color: inherit;
       display: flex;
       flex-direction: column;
       gap: 16px;
@@ -508,23 +583,21 @@ function generatePortalHtml(items) {
     .portal-card::before {
       content: '';
       position: absolute;
-      top: 0; left: 0; right: 0; height: 2px;
+      top: 0; left: 0; right: 0; height: 3px;
       background: transparent;
-      transition: background 0.2s ease;
+      transition: all 0.2s ease;
     }
     .portal-card:hover {
-      transform: translateY(-4px);
-      border-color: #334155;
+      border-color: var(--border-hover);
       background: var(--surface-hover);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
     }
-    .portal-card-tasks:hover::before {
-      background: var(--accent);
-      box-shadow: 0 0 12px var(--accent);
-    }
-    .portal-card-zach:hover::before {
-      background: var(--amber);
-      box-shadow: 0 0 12px var(--amber);
-    }
+    .portal-card-tasks:hover::before { background: var(--accent); box-shadow: 0 0 14px var(--accent); }
+    .portal-card-briefs:hover::before { background: #34d399; box-shadow: 0 0 14px #34d399; }
+    .portal-card-zach:hover::before { background: var(--amber); box-shadow: 0 0 14px var(--amber); }
+    .portal-card-banerry:hover::before { background: var(--purple); box-shadow: 0 0 14px var(--purple); }
+
     .card-top {
       display: flex;
       align-items: center;
@@ -537,48 +610,82 @@ function generatePortalHtml(items) {
       font-family: var(--font-mono);
       font-size: 11px;
       font-weight: 600;
-      padding: 2px 8px;
+      padding: 3px 10px;
       border-radius: 6px;
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid var(--border);
       color: var(--text-muted);
+    }
+    .card-title-link {
+      text-decoration: none;
+      color: inherit;
     }
     .card-title {
       font-size: 18px;
       font-weight: 700;
       letter-spacing: -0.01em;
       color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 0.15s ease;
     }
+    .card-title:hover {
+      color: var(--accent);
+    }
+    .portal-card-briefs .card-title:hover { color: #34d399; }
+    .portal-card-zach .card-title:hover { color: var(--amber); }
+    .portal-card-banerry .card-title:hover { color: var(--purple); }
+
     .card-desc {
       font-size: 13px;
-      line-height: 1.5;
+      line-height: 1.55;
       color: var(--text-muted);
     }
+
+    /* Sub Links */
     .recent-list {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 8px;
       margin-top: 4px;
       border-top: 1px solid rgba(255, 255, 255, 0.06);
-      padding-top: 12px;
+      padding-top: 14px;
     }
     .recent-item {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 8px;
-      padding: 6px 10px;
-      background: rgba(0, 0, 0, 0.2);
-      border: 1px solid rgba(255, 255, 255, 0.04);
-      border-radius: 6px;
+      gap: 10px;
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
       font-size: 12px;
       color: var(--text);
       text-decoration: none;
-      transition: background 0.1s ease;
+      transition: all 0.15s ease;
     }
     .recent-item:hover {
-      background: rgba(56, 189, 248, 0.1);
+      background: rgba(56, 189, 248, 0.12);
+      border-color: rgba(56, 189, 248, 0.3);
       color: var(--accent);
+      transform: translateX(2px);
+    }
+    .portal-card-briefs .recent-item:hover {
+      background: rgba(52, 211, 153, 0.12);
+      border-color: rgba(52, 211, 153, 0.3);
+      color: #34d399;
+    }
+    .portal-card-zach .recent-item:hover {
+      background: rgba(255, 183, 3, 0.12);
+      border-color: rgba(255, 183, 3, 0.3);
+      color: var(--amber);
+    }
+    .portal-card-banerry .recent-item:hover {
+      background: rgba(192, 132, 252, 0.12);
+      border-color: rgba(192, 132, 252, 0.3);
+      color: var(--purple);
     }
     .recent-item-title {
       overflow: hidden;
@@ -588,41 +695,120 @@ function generatePortalHtml(items) {
     .recent-item-tag {
       font-family: var(--font-mono);
       font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.05);
       color: var(--text-muted);
       flex-shrink: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
-    .card-cta {
-      display: flex;
+
+    /* Card CTA Button */
+    .card-cta-btn {
+      display: inline-flex;
       align-items: center;
-      gap: 6px;
+      justify-content: space-between;
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 8px;
       font-size: 13px;
       font-weight: 600;
-      margin-top: auto;
-      padding-top: 8px;
-    }
-    .portal-card-tasks .card-cta { color: var(--accent); }
-    .portal-card-zach .card-cta { color: var(--amber); }
-    .quick-bar {
-      display: flex;
-      gap: 8px;
-      margin-top: 6px;
-      flex-wrap: wrap;
-    }
-    .quick-btn {
-      font-size: 11px;
-      font-family: var(--font-mono);
-      padding: 4px 8px;
-      border-radius: 6px;
-      background: rgba(0,0,0,0.3);
-      border: 1px solid var(--border);
-      color: var(--text-muted);
       text-decoration: none;
-      transition: all 0.1s ease;
-    }
-    .quick-btn:hover {
+      margin-top: auto;
+      transition: all 0.15s ease;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
       color: #fff;
-      border-color: #334155;
     }
+    .card-cta-btn:hover {
+      background: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+    .portal-card-briefs .card-cta-btn:hover { background: #34d399; border-color: #34d399; color: #000; }
+    .portal-card-zach .card-cta-btn:hover { background: var(--amber); border-color: var(--amber); color: #000; }
+    .portal-card-banerry .card-cta-btn:hover { background: var(--purple); border-color: var(--purple); color: #000; }
+
+    /* All Artifacts Section */
+    .explorer-section {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+    .explorer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .explorer-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .explorer-search {
+      width: 100%;
+      max-width: 320px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: #fff;
+      font-family: var(--font-sans);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+    .explorer-search:focus {
+      border-color: var(--accent);
+    }
+    .explorer-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .explorer-table th {
+      text-align: left;
+      padding: 10px 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .explorer-table td {
+      padding: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      vertical-align: middle;
+    }
+    .explorer-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .explorer-link {
+      color: #fff;
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.1s ease;
+    }
+    .explorer-link:hover {
+      color: var(--accent);
+      text-decoration: underline;
+    }
+
+    /* Footer */
     .portal-footer {
       text-align: center;
       font-size: 12px;
@@ -632,73 +818,240 @@ function generatePortalHtml(items) {
       justify-content: center;
       gap: 12px;
       font-family: var(--font-mono);
+      flex-wrap: wrap;
+      padding-top: 12px;
+    }
+    .portal-footer a {
+      color: inherit;
+      text-decoration: none;
+    }
+    .portal-footer a:hover {
+      color: #fff;
     }
   </style>
 </head>
 <body>
   <div class="wrapper">
+    <!-- Header -->
     <header class="portal-header">
       <div class="brand-wrap">
         <div class="brand-icon">🪐</div>
         <div>
           <h1 class="brand-title">Homo Stellaris</h1>
-          <div class="brand-subtitle">panther • tailnet private cloud</div>
+          <div class="brand-subtitle">${escapeHtml(hostname)} • tailnet private cloud</div>
         </div>
       </div>
       <div class="tailnet-badge">
         <span class="status-dot"></span>
-        <span>TAILNET SECURE</span>
+        <span>TAILNET SECURE • ${escapeHtml(ip)}</span>
       </div>
     </header>
 
+    <!-- Fast Nav Bar -->
+    <nav class="fast-nav" aria-label="Quick Navigation">
+      <a href="/tasks/" class="fast-nav-link active-blue">📋 Tasks Hub</a>
+      <a href="/briefs/" class="fast-nav-link active-green">🎙️ Intelligence Radio</a>
+      <a href="/zach/" class="fast-nav-link active-amber">⭐ Zach's World</a>
+      <a href="/zach/lifts/" class="fast-nav-link active-amber">🛗 Elevator Simulator</a>
+      <a href="/zach/timers/" class="fast-nav-link active-amber">⏳ Sensory Timers</a>
+      <a href="/script-mitigations-video.html" class="fast-nav-link active-purple">🎬 Banerry Promo</a>
+    </nav>
+
+    <!-- 4 Hub Cards Grid -->
     <main class="grid">
       <!-- 1. Tasks & Agent Hub -->
-      <a href="/tasks/" class="portal-card portal-card-tasks">
+      <div class="portal-card portal-card-tasks">
         <div class="card-top">
           <span class="card-icon">📋</span>
-          <span class="card-badge">${items.length} Artifacts</span>
+          <span class="card-badge">${tasksItems.length} Artifacts</span>
         </div>
         <div>
-          <h2 class="card-title">Tasks & Agents Dashboard</h2>
+          <a href="/tasks/" class="card-title-link">
+            <h2 class="card-title">Tasks & Agents Dashboard</h2>
+          </a>
           <p class="card-desc">Agent build pipelines, visual plans, symbol diffs, and feature task dashboards.</p>
         </div>
-        ${recentHtml ? `
-        <div class="recent-list" onclick="event.stopPropagation();">
-          ${recentHtml}
+        ${recentTasksHtml ? `
+        <div class="recent-list">
+          ${recentTasksHtml}
         </div>` : ''}
-        <div class="card-cta">
+        <a href="/tasks/" class="card-cta-btn">
           <span>Open Tasks Hub</span>
           <span>➜</span>
-        </div>
-      </a>
+        </a>
+      </div>
 
-      <!-- 2. Zach's World -->
-      <a href="/zach/" class="portal-card portal-card-zach">
+      <!-- 2. Whitehall Intelligence Radio -->
+      <div class="portal-card portal-card-briefs">
         <div class="card-top">
-          <span class="card-icon">🌟</span>
-          <span class="card-badge">PWA App</span>
+          <span class="card-icon">🎙️</span>
+          <span class="card-badge">Daily Broadcast</span>
         </div>
         <div>
-          <h2 class="card-title">Zach's World</h2>
-          <p class="card-desc">Kid-friendly sensory timers & interactive elevator simulator for tablet.</p>
+          <a href="/briefs/" class="card-title-link">
+            <h2 class="card-title">Whitehall Intelligence Radio</h2>
+          </a>
+          <p class="card-desc">Executive presidential morning audio briefing with ElevenLabs newscaster voice synthesis and teleprompter.</p>
         </div>
-        <div class="quick-bar" onclick="event.stopPropagation();">
-          <a href="/zach/lifts/" class="quick-btn">🛗 Elevator Simulator</a>
-          <a href="/zach/timers/" class="quick-btn">⏳ Sensory Timers</a>
+        <div class="recent-list">
+          <a href="/briefs/" class="recent-item">
+            <span class="recent-item-title">🎙️ Listen: Today's Intelligence Transmission</span>
+            <span class="recent-item-tag">audio</span>
+          </a>
+          <a href="/daily-brief-enhancements.html" class="recent-item">
+            <span class="recent-item-title">📑 Visual Plan: General News &amp; Audio Newscaster</span>
+            <span class="recent-item-tag">plan</span>
+          </a>
+          <a href="/briefs/brief-today.mp3" download class="recent-item">
+            <span class="recent-item-title">⬇️ Download Broadcast MP3 (128kbps)</span>
+            <span class="recent-item-tag">mp3</span>
+          </a>
         </div>
-        <div class="card-cta">
-          <span>Open Zach's Hub</span>
+        <a href="/briefs/" class="card-cta-btn">
+          <span>Open Intelligence Radio</span>
           <span>➜</span>
+        </a>
+      </div>
+
+      <!-- 3. Zach's World -->
+      <div class="portal-card portal-card-zach">
+        <div class="card-top">
+          <span class="card-icon">🌟</span>
+          <span class="card-badge">PWA Tablet App</span>
         </div>
-      </a>
+        <div>
+          <a href="/zach/" class="card-title-link">
+            <h2 class="card-title">Zach's World</h2>
+          </a>
+          <p class="card-desc">Kid-friendly sensory timers & interactive elevator simulator designed for tablet touchscreens.</p>
+        </div>
+        <div class="recent-list">
+          <a href="/zach/lifts/" class="recent-item">
+            <span class="recent-item-title">🛗 Elevator Simulator (Sound, Chimes &amp; Floor Panel)</span>
+            <span class="recent-item-tag">app</span>
+          </a>
+          <a href="/zach/timers/" class="recent-item">
+            <span class="recent-item-title">⏳ Sensory Timers Factory (10+ interactive timers)</span>
+            <span class="recent-item-tag">app</span>
+          </a>
+        </div>
+        <a href="/zach/" class="card-cta-btn">
+          <span>Open Zach's Launcher</span>
+          <span>➜</span>
+        </a>
+      </div>
+
+      <!-- 4. Banerry Creative & Demos -->
+      <div class="portal-card portal-card-banerry">
+        <div class="card-top">
+          <span class="card-icon">🎬</span>
+          <span class="card-badge">${banerryItems.length} Videos</span>
+        </div>
+        <div>
+          <a href="/script-mitigations-video.html" class="card-title-link">
+            <h2 class="card-title">Banerry Video Showcase</h2>
+          </a>
+          <p class="card-desc">High-fidelity 9:16 vertical TikTok promo videos and storyboard walkthroughs.</p>
+        </div>
+        ${banerryHtml ? `
+        <div class="recent-list">
+          ${banerryHtml}
+        </div>` : ''}
+        <a href="/script-mitigations-video.html" class="card-cta-btn">
+          <span>View Video Showcase</span>
+          <span>➜</span>
+        </a>
+      </div>
     </main>
 
+    <!-- All Artifacts Directory Explorer -->
+    <section class="explorer-section">
+      <div class="explorer-header">
+        <div class="explorer-title">
+          <span>📦</span>
+          <span>All Hosted Artifacts &amp; Reports (${items.length})</span>
+        </div>
+        <input type="text" id="explorerSearch" class="explorer-search" placeholder="Search all artifacts..." autocomplete="off">
+      </div>
+      <div style="overflow-x: auto;">
+        <table class="explorer-table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Category</th>
+              <th>Status</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody id="explorerTableBody">
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Footer -->
     <footer class="portal-footer">
-      <span>panther.tail29c7da.ts.net</span>
+      <span><a href="${escapeHtml(magicDns)}">${escapeHtml(magicDns.replace('https://', ''))}</a></span>
+      <span>•</span>
+      <span>${escapeHtml(ip)}</span>
       <span>•</span>
       <span>XDG_PUBLICSHARE_DIR</span>
     </footer>
   </div>
+
+  <script>
+    const items = ${allItemsJson};
+    const tbody = document.getElementById('explorerTableBody');
+    const searchInput = document.getElementById('explorerSearch');
+
+    function renderExplorer(query = '') {
+      const q = query.toLowerCase().trim();
+      const filtered = items.filter(t => 
+        !q || 
+        t.title.toLowerCase().includes(q) || 
+        t.slug.toLowerCase().includes(q) || 
+        t.project.toLowerCase().includes(q)
+      );
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 24px;">No matching artifacts found.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(t => {
+        let badgeColor = '#64748b';
+        if (t.project === 'banerry') badgeColor = '#c084fc';
+        else if (t.project === 'zach') badgeColor = '#ffb703';
+        else if (t.project === 'briefs' || t.slug === 'briefs') badgeColor = '#34d399';
+        else if (t.project === 'reports') badgeColor = '#38bdf8';
+
+        return \`
+          <tr>
+            <td>
+              <a href="\${t.href}" class="explorer-link">\${t.title}</a>
+            </td>
+            <td>
+              <span style="font-family: var(--font-mono); font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.06); color: \${badgeColor}; text-transform: uppercase;">
+                \${t.project}
+              </span>
+            </td>
+            <td>
+              <span style="font-family: var(--font-mono); font-size: 11px; color: #4ade80;">● \${t.status}</span>
+            </td>
+            <td style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); white-space: nowrap;">
+              \${t.timeAgo}
+            </td>
+          </tr>
+        \`;
+      }).join('');
+    }
+
+    searchInput.addEventListener('input', (e) => {
+      renderExplorer(e.target.value);
+    });
+
+    renderExplorer();
+  </script>
 </body>
 </html>`;
 }
@@ -730,12 +1083,15 @@ function updateIndexHtml() {
 
       const metaPath = path.join(folderPath, 'metadata.json');
       let meta = { specId: d.name, title: d.name, project: 'tasks', status: 'COMPLETED' };
+      if (d.name === 'briefs' || d.name.includes('brief')) meta.project = 'briefs';
+      else if (d.name === 'lift' || d.name === 'timer-factory' || d.name === 'zach') meta.project = 'zach';
+
       if (fs.existsSync(metaPath)) {
         try { meta = { ...meta, ...JSON.parse(fs.readFileSync(metaPath, 'utf-8')) }; } catch {}
       } else {
         const content = fs.readFileSync(indexPath, 'utf-8');
         const m = content.match(/<title>([^<]+)<\/title>/i);
-        if (m) meta.title = m[1].trim();
+        if (m) meta.title = decodeHtmlEntities(m[1].trim());
       }
 
       const indexStat = fs.statSync(indexPath);
@@ -769,11 +1125,12 @@ function updateIndexHtml() {
 
       const content = fs.readFileSync(filePath, 'utf-8');
       const m = content.match(/<title>([^<]+)<\/title>/i);
-      let title = m ? m[1].trim() : slug.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      let title = m ? decodeHtmlEntities(m[1].trim()) : slug.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
       let project = 'reports';
       if (/banerry/i.test(d.name) || /banerry/i.test(title)) project = 'banerry';
       else if (/zach/i.test(d.name) || /zach/i.test(title)) project = 'zach';
+      else if (/brief/i.test(d.name) || /brief/i.test(title) || /whitehall/i.test(title)) project = 'briefs';
 
       items.push({
         slug,
@@ -937,6 +1294,10 @@ function updateIndexHtml() {
       <a href="/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid var(--border); color: var(--text-muted); padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
         <span>🪐</span>
         <span>PORTAL</span>
+      </a>
+      <a href="/briefs/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid #34d399; color: #34d399; padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
+        <span>🎙️</span>
+        <span>BRIEFS</span>
       </a>
       <a href="/zach/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid #ffb703; color: #ffb703; padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
         <span>⭐</span>
@@ -1121,7 +1482,8 @@ function updateIndexHtml() {
   try { fs.chmodSync(tasksIndexFile, 0o644); } catch {}
 
   // 2. Write root portal to /index.html
-  const portalHtml = generatePortalHtml(items);
+  const tailscaleInfo = getTailscaleInfo();
+  const portalHtml = generatePortalHtml(items, tailscaleInfo);
   const portalIndexFile = path.join(REPORTS_DIR, 'index.html');
   fs.writeFileSync(portalIndexFile, portalHtml, 'utf-8');
   try { fs.chmodSync(portalIndexFile, 0o644); } catch {}
