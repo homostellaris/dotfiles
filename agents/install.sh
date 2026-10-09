@@ -24,14 +24,40 @@ mkdir -p "$HOME/.gemini/config/skills"
 for skill_path in "$DIR"/skills/*; do
   if [ -d "$skill_path" ]; then
     skill_name=$(basename "$skill_path")
-    
+
     # Symlink to ~/.agents/skills
     rm -rf "$HOME/.agents/skills/$skill_name"
     ln -nsf "$skill_path" "$HOME/.agents/skills/$skill_name"
-    
+
     # Symlink to ~/.gemini/config/skills
     rm -rf "$HOME/.gemini/config/skills/$skill_name"
     ln -nsf "$skill_path" "$HOME/.gemini/config/skills/$skill_name"
+  fi
+done
+
+
+
+# Expose every ~/.agents skill to Claude Code, whether it came from this repo above
+# or from `npx skills add`. Sourced from ~/.agents/skills rather than $DIR/skills so
+# CLI-installed skills are covered too.
+mkdir -p "$HOME/.claude/skills"
+
+for skill_path in "$HOME"/.agents/skills/*; do
+  if [ -d "$skill_path" ]; then
+    skill_name=$(basename "$skill_path")
+    dest="$HOME/.claude/skills/$skill_name"
+
+    # Only create a missing entry or repair one of our own links. Devkit owns its
+    # entries here via `devkit setup --only link`, and visual-plan, visual-recap and
+    # synced are real directories - overwriting any of them would be destructive.
+    if [ -e "$dest" ] || [ -L "$dest" ]; then
+      case "$(readlink "$dest" 2>/dev/null)" in
+        *.agents/skills/*) ;;
+        *) continue ;;
+      esac
+    fi
+
+    ln -nsf "$skill_path" "$dest"
   fi
 done
 
