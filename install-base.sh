@@ -13,7 +13,7 @@ DIR=$(cd "$(dirname "$0")" && pwd)
 "$DIR/nvim/install.sh"
 
 # --- personal-machine config (host-layout / optional; non-fatal) ---
-for extra in code agents claude zsh; do
+for extra in agents claude zsh; do
   if [ -x "$DIR/$extra/install.sh" ]; then
     "$DIR/$extra/install.sh" || echo "install-base: skipped '$extra' (non-fatal)"
   fi
