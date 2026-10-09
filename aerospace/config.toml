@@ -5,24 +5,27 @@
 # https://nikitabobko.github.io/AeroSpace/commands
 
 config-version = 2
-# start-at-login = true
+start-at-login = true
+auto-reload-config = true
+on-focused-monitor-changed = ['move-mouse monitor-lazy-center']
+persistent-workspaces = ['1', '2', '3', '4', '5', '6', '7', 'scratchpad']
 
 after-startup-command = [
-    'exec-and-forget borders active_color=0xff50bfcb inactive_color=0xff414550 width=8.0 hidpi=off',
+    'exec-and-forget borders style=round active_color=0xff50bfcb inactive_color=0xff414550 width=6.0 hidpi=off',
 ]
 
 exec-on-workspace-change = [
     '/bin/bash', '-lc',
-    'open -g "swiftbar://refreshplugin?name=workspace-labels"; /Users/dan/.config/hyprspace/scripts/refresh-labels.sh "$AEROSPACE_FOCUSED_WORKSPACE" </dev/null >/dev/null 2>&1 & disown'
+    'open -g "swiftbar://refreshplugin?name=workspace-labels"; /Users/dan/.config/aerospace/scripts/refresh-labels.sh "$AEROSPACE_FOCUSED_WORKSPACE" </dev/null >/dev/null 2>&1 & disown'
 ]
 
 [gaps]
-inner.horizontal = 18
-inner.vertical = 18
-outer.left = 18
-outer.right = 18
-outer.bottom = 18
-outer.top = 18
+inner.horizontal = 12
+inner.vertical = 12
+outer.left = 12
+outer.right = 12
+outer.bottom = 12
+outer.top = 3
 
 # ---------- MAIN KEY BINDINGS -----------
 
@@ -79,7 +82,7 @@ ctrl-alt-cmd-equal = 'resize smart +50'
 ctrl-alt-cmd-f = 'fullscreen'
 ctrl-alt-cmd-shift-f = 'macos-native-fullscreen'
 
-ctrl-alt-cmd-e = 'exec-and-forget /Users/dan/.config/hyprspace/scripts/float-nvim.sh'
+ctrl-alt-cmd-e = 'exec-and-forget /Users/dan/.config/aerospace/scripts/float-nvim.sh'
 
 # ---------- SERVICE MODE -----------
 
@@ -87,16 +90,17 @@ ctrl-alt-cmd-e = 'exec-and-forget /Users/dan/.config/hyprspace/scripts/float-nvi
 esc = ['reload-config', 'mode main']
 r = ['flatten-workspace-tree', 'mode main']
 f = ['layout floating tiling', 'mode main']
+ctrl-alt-cmd-backspace = ['close-all-windows-but-current', 'mode main']
 ctrl-alt-cmd-shift-semicolon = 'mode main'
 
-ctrl-alt-cmd-left = 'join-with left'
-ctrl-alt-cmd-down = 'join-with down'
-ctrl-alt-cmd-up = 'join-with up'
-ctrl-alt-cmd-right = 'join-with right'
-ctrl-alt-cmd-h = 'join-with left'
-ctrl-alt-cmd-j = 'join-with down'
-ctrl-alt-cmd-k = 'join-with up'
-ctrl-alt-cmd-l = 'join-with right'
+ctrl-alt-cmd-left = ['join-with left', 'mode main']
+ctrl-alt-cmd-down = ['join-with down', 'mode main']
+ctrl-alt-cmd-up = ['join-with up', 'mode main']
+ctrl-alt-cmd-right = ['join-with right', 'mode main']
+ctrl-alt-cmd-h = ['join-with left', 'mode main']
+ctrl-alt-cmd-j = ['join-with down', 'mode main']
+ctrl-alt-cmd-k = ['join-with up', 'mode main']
+ctrl-alt-cmd-l = ['join-with right', 'mode main']
 
 # ---------- WINDOW CONTROL -----------
 
@@ -153,8 +157,8 @@ run = ["layout floating"]
 [[on-window-detected]]
 if.window-title-regex-substring = 'nvim-float'
 check-further-callbacks = true
-run = ["layout floating", "position center"]
+run = ["layout floating"]
 
 [[on-window-detected]]
 if = 'true'
-run = ['exec-and-forget /Users/dan/.config/hyprspace/scripts/refresh-labels.sh']
+run = ['exec-and-forget /Users/dan/.config/aerospace/scripts/refresh-labels.sh']

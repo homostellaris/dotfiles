@@ -2,7 +2,7 @@
 
 // Required parameters:
 // @raycast.schemaVersion 1
-// @raycast.title Hyprspace Config
+// @raycast.title AeroSpace Config
 // @raycast.mode fullOutput
 
 // Optional parameters:
@@ -13,5 +13,15 @@
 // @raycast.author homostellaris
 // @raycast.authorURL https://raycast.com/homostellaris
 
-const config = await Bun.file(`${process.env.HOME}/.config/hyprspace/config.toml`).text();
-console.log(config);
+const candidates = [
+	`${process.env.HOME}/.config/aerospace/aerospace.toml`,
+	`${process.env.HOME}/.config/hyprspace/config.toml`,
+];
+
+for (const candidate of candidates) {
+	const file = Bun.file(candidate);
+	if (await file.exists()) {
+		console.log(await file.text());
+		break;
+	}
+}
