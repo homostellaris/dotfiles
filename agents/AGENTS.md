@@ -1,10 +1,17 @@
-@rules/style.md
+# Coding Standards
+
+- Don't use code comments unless its to explain a non-obvious choice about the implementation.
+- Don't abbreviate variable names.
+- Follow the stepdown approach to writing code.
 
 # Testing
 
-# Cypress
+- Put happy path tests first, then sad tests, then bad tests.
+- Don't use the word 'mock' in variable names as its obvious from the context of the test.
+- Don't use top-level describe statements for the function or class name when its already obvious from the file name.
+- Don't add a top-level describe when its obvious from the filename what's being tested.
 
-## E2E
+## Cypress E2E
 
 Cypress tests should be organised such that they mirror the route they are testing. So in a NextJS application the route
 `/blog/[slug]` would be tested by `cypress/e2e/blog/slug.cy.ts`.
@@ -17,6 +24,13 @@ Cypress tests should be organised such that they mirror the route they are testi
 
 - **Strict Rule**: Never commit or push changes directly to default branches (`master`, `main`, `develop`) under any circumstances unless explicitly requested by the user in the current session. Always develop on a separate feature branch and raise a PR.
 
+# Framework & Architecture Rules
+
+For specialized stack guidelines, consult the relevant rule files:
+- [Coding Style](rules/style.md)
+- [Convex Guidelines](rules/convex.md)
+- [NestJS Guidelines](rules/nestjs.md)
+
 # Agent Skills
 
 Common automation skills and artifact sharing are located under `agents/skills/`:
@@ -25,8 +39,6 @@ Common automation skills and artifact sharing are located under `agents/skills/`
 - **`commit-and-push`**: Co-author Git commits following Gitmoji standards.
 - **`check-pr-run`**: Monitor and report GitHub Actions CI status.
 - **`omarchy-log`**: Record, structure, and maintain systematic incident, debugging, and system configuration logs in the user's Obsidian vault (`~/Work/Reality Sculptor/Omarchy log/`).
-
-
 
 # Agentic Build Orchestrator (`build`)
 

@@ -1,6 +1,25 @@
 #!/bin/sh
 DIR=$(cd "$(dirname "$0")" && pwd)
 
+# Create rules directories (global and workspace)
+mkdir -p "$HOME/.agents/rules"
+mkdir -p "$HOME/.claude/rules"
+mkdir -p "$HOME/.gemini/config/rules"
+mkdir -p "$HOME/code/homostellaris/.agents/rules"
+mkdir -p "$HOME/code/homostellaris/.claude/rules"
+
+# Link all rules
+for rule_path in "$DIR"/rules/*; do
+  if [ -f "$rule_path" ]; then
+    rule_name=$(basename "$rule_path")
+    ln -nfs "$rule_path" "$HOME/.agents/rules/$rule_name"
+    ln -nfs "$rule_path" "$HOME/.claude/rules/$rule_name"
+    ln -nfs "$rule_path" "$HOME/.gemini/config/rules/$rule_name"
+    ln -nfs "$rule_path" "$HOME/code/homostellaris/.agents/rules/$rule_name"
+    ln -nfs "$rule_path" "$HOME/code/homostellaris/.claude/rules/$rule_name"
+  fi
+done
+
 # Create workspace config directories
 mkdir -p "$HOME/code/homostellaris/.claude"
 mkdir -p "$HOME/code/homostellaris/.agents"
@@ -11,10 +30,12 @@ ln -nfs "$DIR/AGENTS.md" "$HOME/code/homostellaris/.agents/CLAUDE.md"
 ln -nfs "$DIR/AGENTS.md" "$HOME/code/homostellaris/.claude/AGENTS.md"
 ln -nfs "$DIR/AGENTS.md" "$HOME/code/homostellaris/.claude/CLAUDE.md"
 
-
-# Symlink global rules for Antigravity/Gemini
+# Symlink global rules for Antigravity/Gemini and Claude Code
 mkdir -p "$HOME/.gemini/config"
 ln -nfs "$DIR/AGENTS.md" "$HOME/.gemini/config/AGENTS.md"
+
+mkdir -p "$HOME/.claude"
+ln -nfs "$DIR/AGENTS.md" "$HOME/.claude/CLAUDE.md"
 
 
 # Symlink all agent skills to user's agent skills paths
