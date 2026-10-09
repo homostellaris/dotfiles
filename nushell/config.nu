@@ -27,6 +27,7 @@ if $nu.os-info.name == "macos" {
   path add "/usr/local/bin"
   path add "/opt/homebrew/bin"
   path add "/opt/homebrew/opt/libpq/bin"
+  path add "/opt/homebrew/opt/rustup/bin"
 }
 
 # Prefer VS Code when present (macOS), else nvim (headless/sandbox).

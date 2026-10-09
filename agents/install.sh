@@ -36,6 +36,11 @@ for skill_path in "$DIR"/skills/*; do
 done
 
 
+# explain-this hands its motion-graphic form to psychopomp's explainer-motion skill.
+if [ ! -d "$HOME/.agents/skills/psychopomp" ]; then
+  npx -y skills add kitlangton/psychopomp -g -s psychopomp -s explainer-motion -a claude-code -a gemini-cli -y
+fi
+
 
 # Expose every ~/.agents skill to Claude Code, whether it came from this repo above
 # or from `npx skills add`. Sourced from ~/.agents/skills rather than $DIR/skills so
