@@ -13,7 +13,6 @@ WM=${WM:-aerospace}
 echo "Manually install the following"
 echo "- Chrome"
 echo "- Obsidian"
-echo "- Todoist"
 echo "- Bitwarden"
 echo "- Discord"
 echo "- Google Drive"
