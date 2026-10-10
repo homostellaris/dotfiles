@@ -1,12 +1,11 @@
 #!/bin/sh
 DIR=$(cd "$(dirname "$0")" && pwd)
 
-# Create rules directories (global and workspace)
-mkdir -p "$HOME/.agents/rules"
-mkdir -p "$HOME/.claude/rules"
-mkdir -p "$HOME/.gemini/config/rules"
-mkdir -p "$HOME/code/homostellaris/.agents/rules"
-mkdir -p "$HOME/code/homostellaris/.claude/rules"
+# Clean up any broken symlinks in rules directories
+for rules_dir in "$HOME/.agents/rules" "$HOME/.claude/rules" "$HOME/.gemini/config/rules"; do
+  mkdir -p "$rules_dir"
+  find "$rules_dir" -xtype l -delete 2>/dev/null || true
+done
 
 # Link all rules
 for rule_path in "$DIR"/rules/*; do
@@ -15,20 +14,8 @@ for rule_path in "$DIR"/rules/*; do
     ln -nfs "$rule_path" "$HOME/.agents/rules/$rule_name"
     ln -nfs "$rule_path" "$HOME/.claude/rules/$rule_name"
     ln -nfs "$rule_path" "$HOME/.gemini/config/rules/$rule_name"
-    ln -nfs "$rule_path" "$HOME/code/homostellaris/.agents/rules/$rule_name"
-    ln -nfs "$rule_path" "$HOME/code/homostellaris/.claude/rules/$rule_name"
   fi
 done
-
-# Create workspace config directories
-mkdir -p "$HOME/code/homostellaris/.claude"
-mkdir -p "$HOME/code/homostellaris/.agents"
-
-# Symlink rules file to both AGENTS.md and CLAUDE.md in both configs
-ln -nfs "$DIR/AGENTS.md" "$HOME/code/homostellaris/.agents/AGENTS.md"
-ln -nfs "$DIR/AGENTS.md" "$HOME/code/homostellaris/.agents/CLAUDE.md"
-ln -nfs "$DIR/AGENTS.md" "$HOME/code/homostellaris/.claude/AGENTS.md"
-ln -nfs "$DIR/AGENTS.md" "$HOME/code/homostellaris/.claude/CLAUDE.md"
 
 # Symlink global rules for Antigravity/Gemini and Claude Code
 mkdir -p "$HOME/.gemini/config"
