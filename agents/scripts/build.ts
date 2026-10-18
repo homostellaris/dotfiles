@@ -5,10 +5,14 @@ import os from "node:os";
 import child_process from "node:child_process";
 import { parseArgs } from "node:util";
 
+const STATE_DIRECTORY = path.join(os.homedir(), ".local", "share", "agent-builds");
+const INLINE_SPEC_DIRECTORY = path.join(STATE_DIRECTORY, "specs");
+
 const POSSIBLE_SPEC_DIRS = [
   process.env.TODOS_DIR,
   path.join(os.homedir(), "Work", "Reality Sculptor", "todos"),
   path.join(os.homedir(), "obsidian", "reality-sculptor", "todos"),
+  INLINE_SPEC_DIRECTORY,
 ].filter(Boolean) as string[];
 
 const POSSIBLE_VAULT_DIRS = [
@@ -19,9 +23,14 @@ const POSSIBLE_VAULT_DIRS = [
 
 const SPEC_DIRECTORY = POSSIBLE_SPEC_DIRS.find((d) => fs.existsSync(d)) || POSSIBLE_SPEC_DIRS[0];
 const VAULT_DIRECTORY = POSSIBLE_VAULT_DIRS.find((d) => fs.existsSync(d)) || POSSIBLE_VAULT_DIRS[0];
-const STATE_DIRECTORY = path.join(os.homedir(), ".local", "share", "agent-builds");
 const REPOSITORIES_DIRECTORY = path.join(os.homedir(), "code", "homostellaris");
 const ANTIGRAVITY_APP_DATA = path.join(os.homedir(), ".gemini", "antigravity-cli");
+
+export const STAGE_MODELS = {
+  planner: "gemini-4-argon-high",
+  implementer: "gemini-4-argon-high",
+  verifier: "claude-opus-5-5-high",
+} as const;
 
 function getTailscaleBaseUrl(): string {
   try {
@@ -105,17 +114,29 @@ export class BuildOrchestrator {
   public specQuery: string;
   public projectOverride?: string;
   public dryRun: boolean;
+  public inlinePrompt?: string;
   public spec: SpecMetadata | null = null;
   public state: BuildState | null = null;
 
-  constructor(specQuery: string, projectOverride?: string, dryRun: boolean = false) {
+  constructor(
+    specQuery: string = "",
+    projectOverride?: string,
+    dryRun: boolean = false,
+    inlinePrompt?: string
+  ) {
     this.specQuery = specQuery;
     this.projectOverride = projectOverride;
     this.dryRun = dryRun;
+    this.inlinePrompt = inlinePrompt;
   }
 
   async execute(): Promise<number> {
-    this.spec = this.discoverSpec(this.specQuery);
+    if (this.inlinePrompt) {
+      this.spec = this.createInlineSpec(this.inlinePrompt);
+    } else {
+      this.spec = this.discoverSpec(this.specQuery);
+    }
+
     if (!this.spec) {
       console.error(
         `❌ Error: Could not locate spec matching '${this.specQuery}' in ${SPEC_DIRECTORY} or ${VAULT_DIRECTORY}`
@@ -142,7 +163,45 @@ export class BuildOrchestrator {
     return await this.advanceLifecycle(determinedStage);
   }
 
+  slugifyPrompt(promptText: string): string {
+    const words = promptText
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]+/g, " ")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 7);
+    const baseSlug = words.join("-").slice(0, 48).replace(/-+$/, "");
+    return baseSlug || "inline-task";
+  }
+
+  createInlineSpec(promptText: string): SpecMetadata {
+    const identifier = this.slugifyPrompt(promptText);
+    const firstLine = promptText.trim().split("\n")[0].trim();
+    const title = firstLine.length > 72 ? `${firstLine.slice(0, 69)}...` : firstLine;
+    const inferredProject =
+      this.projectOverride || this.inferTargetProject(identifier, promptText, undefined);
+    const filePath = path.join(INLINE_SPEC_DIRECTORY, `${identifier}.md`);
+
+    if (!this.dryRun) {
+      fs.mkdirSync(INLINE_SPEC_DIRECTORY, { recursive: true });
+      const fileMarkdown = `---\ntitle: ${JSON.stringify(title)}\n---\n\n${promptText.trim()}\n`;
+      fs.writeFileSync(filePath, fileMarkdown, "utf-8");
+    }
+
+    return {
+      identifier,
+      filePath,
+      title,
+      content: promptText.trim(),
+      targetProject: inferredProject,
+    };
+  }
+
   discoverSpec(query: string): SpecMetadata | null {
+    if (!query) {
+      return null;
+    }
     const candidatePaths: string[] = [];
 
     if (fs.existsSync(query) && fs.statSync(query).isFile()) {
@@ -603,7 +662,8 @@ export class BuildOrchestrator {
       `planner-${this.spec.identifier}`,
       "You are the Lead Software Architect. Output a comprehensive /visual-plan HTML report.",
       prompt,
-      this.state.repo_dir
+      this.state.repo_dir,
+      STAGE_MODELS.planner
     );
 
     if (!success) {
@@ -630,7 +690,7 @@ export class BuildOrchestrator {
   handleAwaitPlanApproval(): void {
     console.log("⏸️  Visual plan is waiting for your review:");
     console.log(`🔗 ${this.state?.visual_plan_url || `${getTailscaleBaseUrl()}/`}`);
-    console.log(`👉 Reply 'approve' on WhatsApp or run 'build ${this.spec?.identifier}' after approving.`);
+    console.log(`👉 Reply 'approve' on WhatsApp or run 'build --spec-id ${this.spec?.identifier}' after approving.`);
   }
 
   handleSetupWorktree(): number {
@@ -701,7 +761,8 @@ export class BuildOrchestrator {
     const success = await this.runAgentInHerdr(
       `impl-${this.spec.identifier}`,
       prompt,
-      this.state.worktree_dir
+      this.state.worktree_dir,
+      STAGE_MODELS.implementer
     );
 
     if (!success) {
@@ -717,7 +778,8 @@ export class BuildOrchestrator {
       await this.runAgentInHerdr(
         `impl-${this.spec.identifier}`,
         repairPrompt,
-        this.state.worktree_dir
+        this.state.worktree_dir,
+        STAGE_MODELS.implementer
       );
     }
 
@@ -801,7 +863,8 @@ export class BuildOrchestrator {
     await this.runAgentInHerdr(
       `impl-${this.spec.identifier}`,
       repairPrompt,
-      this.state.worktree_dir
+      this.state.worktree_dir,
+      STAGE_MODELS.implementer
     );
 
     runCommand(["git", "add", "."], { cwd: this.state.worktree_dir, capture: false });
@@ -843,7 +906,8 @@ export class BuildOrchestrator {
     await this.runAgentInHerdr(
       `impl-${this.spec.identifier}`,
       fixPrompt,
-      this.state.worktree_dir
+      this.state.worktree_dir,
+      STAGE_MODELS.implementer
     );
 
     runCommand(["git", "add", "."], { cwd: this.state.worktree_dir, capture: false });
@@ -883,7 +947,8 @@ export class BuildOrchestrator {
     await this.runAgentInHerdr(
       `verifier-${this.spec.identifier}`,
       verifierPrompt,
-      this.state.worktree_dir
+      this.state.worktree_dir,
+      STAGE_MODELS.verifier
     );
 
     const statusRes = runCommand(["git", "status", "--porcelain"], {
@@ -950,7 +1015,8 @@ export class BuildOrchestrator {
   async runAgentInHerdr(
     agentName: string,
     prompt: string,
-    workingDir: string
+    workingDir: string,
+    model: string = STAGE_MODELS.implementer
   ): Promise<boolean> {
     const herdrBin = findExecutable("herdr", [path.join(os.homedir(), ".local", "bin", "herdr")]);
     if (!herdrBin || !fs.existsSync(herdrBin)) {
@@ -958,7 +1024,8 @@ export class BuildOrchestrator {
         agentName,
         "You are an AI coding assistant.",
         prompt,
-        workingDir
+        workingDir,
+        model
       );
     }
 
@@ -986,7 +1053,19 @@ export class BuildOrchestrator {
       }
 
       if (paneId) {
-        const startCmd = [herdrBin, "agent", "start", agentName, "--kind", "agy", "--pane", paneId];
+        const startCmd = [
+          herdrBin,
+          "agent",
+          "start",
+          agentName,
+          "--kind",
+          "agy",
+          "--pane",
+          paneId,
+          "--",
+          "--model",
+          model,
+        ];
         runCommand(startCmd, { capture: true });
 
         const promptCmd = [
@@ -1008,7 +1087,8 @@ export class BuildOrchestrator {
       agentName,
       "You are an AI coding assistant.",
       prompt,
-      workingDir
+      workingDir,
+      model
     );
   }
 
@@ -1016,7 +1096,8 @@ export class BuildOrchestrator {
     _sessionName: string,
     _systemPrompt: string,
     prompt: string,
-    workingDir: string
+    workingDir: string,
+    model: string = STAGE_MODELS.planner
   ): Promise<boolean> {
     const agyBinary = findExecutable("agy", [
       path.join(os.homedir(), ".local", "bin", "agy"),
@@ -1024,7 +1105,7 @@ export class BuildOrchestrator {
     ]);
 
     if (agyBinary && fs.existsSync(agyBinary)) {
-      const res = runCommand([agyBinary, "--print", prompt], {
+      const res = runCommand([agyBinary, "--model", model, "--print", prompt], {
         cwd: workingDir,
         capture: false,
       });
@@ -1166,10 +1247,11 @@ export class BuildOrchestrator {
   }
 }
 
-function parseArguments() {
+export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
   const { values, positionals } = parseArgs({
-    args: process.argv.slice(2),
+    args: rawArgs,
     options: {
+      "spec-id": { type: "string" },
       project: { type: "string" },
       "dry-run": { type: "boolean", default: false },
       status: { type: "boolean", default: false },
@@ -1178,12 +1260,17 @@ function parseArguments() {
     allowPositionals: true,
   });
 
-  if (values.help || positionals.length === 0) {
-    console.log("Usage: build <spec> [options]");
+  const inlinePrompt = positionals.length > 0 ? positionals.join(" ").trim() : undefined;
+  const specId = values["spec-id"];
+
+  if (values.help || (!inlinePrompt && !specId)) {
+    console.log('Usage: build "<prompt>" [options]');
+    console.log("       build --spec-id <id> [options]");
     console.log("\nAgentic coding workflow build orchestrator powered by Antigravity and Herdr.");
     console.log("\nPositional arguments:");
-    console.log("  spec                  Spec identifier, slug, or file path in Obsidian todos.");
+    console.log("  prompt                Inline feature prompt to plan and build.");
     console.log("\nOptions:");
+    console.log("  --spec-id <id>        Pre-written spec identifier, slug, or file path in Obsidian todos.");
     console.log("  --project <project>   Override inferred target project (e.g. banerry, starfocus).");
     console.log("  --dry-run             Inspect external state and planned actions without side effects.");
     console.log("  --status              Display current build lifecycle state.");
@@ -1192,15 +1279,21 @@ function parseArguments() {
   }
 
   return {
-    spec: positionals[0],
+    prompt: inlinePrompt,
+    specId: specId || "",
     project: values.project,
     dryRun: Boolean(values["dry-run"] || values.status),
   };
 }
 
 async function main() {
-  const args = parseArguments();
-  const orchestrator = new BuildOrchestrator(args.spec, args.project, args.dryRun);
+  const parsedArguments = parseArguments();
+  const orchestrator = new BuildOrchestrator(
+    parsedArguments.specId,
+    parsedArguments.project,
+    parsedArguments.dryRun,
+    parsedArguments.prompt
+  );
   const exitCode = await orchestrator.execute();
   process.exit(exitCode);
 }

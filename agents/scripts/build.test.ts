@@ -1,10 +1,47 @@
 import { describe, expect, it } from "bun:test";
 import path from "node:path";
 import os from "node:os";
-import { BuildOrchestrator } from "./build.ts";
+import { BuildOrchestrator, STAGE_MODELS, parseArguments } from "./build.ts";
 
 describe("BuildOrchestrator (build.ts)", () => {
   const orchestrator = new BuildOrchestrator("dummy-query");
+
+  it("uses Gemini 4 Argon High for planner and implementer and Claude Opus 5.5 High for verifier", () => {
+    expect(STAGE_MODELS.planner).toBe("gemini-4-argon-high");
+    expect(STAGE_MODELS.implementer).toBe("gemini-4-argon-high");
+    expect(STAGE_MODELS.verifier).toBe("claude-opus-5-5-high");
+  });
+
+  it("parses positional argument as an inline prompt", () => {
+    const parsed = parseArguments(["Add a dark mode toggle to settings", "--project", "banerry", "--dry-run"]);
+    expect(parsed.prompt).toBe("Add a dark mode toggle to settings");
+    expect(parsed.specId).toBe("");
+    expect(parsed.project).toBe("banerry");
+    expect(parsed.dryRun).toBe(true);
+  });
+
+  it("parses --spec-id for pre-written specs", () => {
+    const parsed = parseArguments(["--spec-id", "canvas-section_y2vtpcom", "--status"]);
+    expect(parsed.specId).toBe("canvas-section_y2vtpcom");
+    expect(parsed.prompt).toBeUndefined();
+    expect(parsed.dryRun).toBe(true);
+  });
+
+  it("creates an inline spec with deterministic slug and inferred project", () => {
+    const inlineOrchestrator = new BuildOrchestrator(
+      "",
+      undefined,
+      true,
+      "Add Banerry OAuth callback handler for Google login"
+    );
+    const spec = inlineOrchestrator.createInlineSpec(
+      "Add Banerry OAuth callback handler for Google login"
+    );
+    expect(spec.identifier).toBe("add-banerry-oauth-callback-handler-for-google");
+    expect(spec.title).toBe("Add Banerry OAuth callback handler for Google login");
+    expect(spec.targetProject).toBe("banerry");
+    expect(spec.content).toBe("Add Banerry OAuth callback handler for Google login");
+  });
 
   it("parses YAML frontmatter and body accurately", () => {
     const markdown = `---
