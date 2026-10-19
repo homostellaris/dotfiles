@@ -81,6 +81,8 @@ ctrl-alt-cmd-minus = 'resize smart -50'
 ctrl-alt-cmd-equal = 'resize smart +50'
 ctrl-alt-cmd-f = 'fullscreen'
 ctrl-alt-cmd-shift-f = 'macos-native-fullscreen'
+ctrl-alt-cmd-w = 'close'
+ctrl-alt-cmd-q = 'close --quit-if-last-window'
 
 ctrl-alt-cmd-e = 'exec-and-forget /Users/dan/.config/aerospace/scripts/float-nvim.sh'
 
