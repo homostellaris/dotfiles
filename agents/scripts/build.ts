@@ -27,8 +27,11 @@ const REPOSITORIES_DIRECTORY = path.join(os.homedir(), "code", "homostellaris");
 const ANTIGRAVITY_APP_DATA = path.join(os.homedir(), ".gemini", "antigravity-cli");
 
 export const STAGE_MODELS = {
-  planner: "gemini-4-argon-high",
+  planner: "gemini-3.8-flash-high",
   implementer: "gemini-4-argon-high",
+  repair: "gemini-3.8-flash-high",
+  ciRepair: "gemini-3.8-flash-high",
+  commentResolver: "gemini-3.8-flash-high",
   verifier: "claude-opus-5-5-high",
 } as const;
 
@@ -779,7 +782,7 @@ export class BuildOrchestrator {
         `impl-${this.spec.identifier}`,
         repairPrompt,
         this.state.worktree_dir,
-        STAGE_MODELS.implementer
+        STAGE_MODELS.repair
       );
     }
 
@@ -864,7 +867,7 @@ export class BuildOrchestrator {
       `impl-${this.spec.identifier}`,
       repairPrompt,
       this.state.worktree_dir,
-      STAGE_MODELS.implementer
+      STAGE_MODELS.ciRepair
     );
 
     runCommand(["git", "add", "."], { cwd: this.state.worktree_dir, capture: false });
@@ -907,7 +910,7 @@ export class BuildOrchestrator {
       `impl-${this.spec.identifier}`,
       fixPrompt,
       this.state.worktree_dir,
-      STAGE_MODELS.implementer
+      STAGE_MODELS.commentResolver
     );
 
     runCommand(["git", "add", "."], { cwd: this.state.worktree_dir, capture: false });
