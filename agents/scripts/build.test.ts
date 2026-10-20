@@ -6,8 +6,10 @@ import { BuildOrchestrator, STAGE_MODELS, parseArguments } from "./build.ts";
 describe("BuildOrchestrator (build.ts)", () => {
   const orchestrator = new BuildOrchestrator("dummy-query");
 
-  it("configures stage models with Flash 3.8 for planning and repair, Argon High for implementation, and Claude Opus for verification", () => {
-    expect(STAGE_MODELS.planner).toBe("gemini-3.8-flash-high");
+  it("configures stage models with Argon High for architecture and implementation, Flash 3.8 for visualization and repairs, and Claude Opus for verification", () => {
+    expect(STAGE_MODELS.architect).toBe("gemini-4-argon-high");
+    expect(STAGE_MODELS.visualizer).toBe("gemini-3.8-flash-high");
+    expect(STAGE_MODELS.planner).toBe("gemini-4-argon-high");
     expect(STAGE_MODELS.implementer).toBe("gemini-4-argon-high");
     expect(STAGE_MODELS.repair).toBe("gemini-3.8-flash-high");
     expect(STAGE_MODELS.ciRepair).toBe("gemini-3.8-flash-high");

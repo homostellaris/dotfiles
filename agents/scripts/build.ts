@@ -27,7 +27,9 @@ const REPOSITORIES_DIRECTORY = path.join(os.homedir(), "code", "homostellaris");
 const ANTIGRAVITY_APP_DATA = path.join(os.homedir(), ".gemini", "antigravity-cli");
 
 export const STAGE_MODELS = {
-  planner: "gemini-3.8-flash-high",
+  architect: "gemini-4-argon-high",
+  visualizer: "gemini-3.8-flash-high",
+  planner: "gemini-4-argon-high",
   implementer: "gemini-4-argon-high",
   repair: "gemini-3.8-flash-high",
   ciRepair: "gemini-3.8-flash-high",
@@ -652,25 +654,53 @@ export class BuildOrchestrator {
   async handlePlanGeneration(): Promise<number> {
     if (!this.spec || !this.state) return 1;
 
-    console.log("🧠 Spawning Antigravity Planner Agent to author /visual-plan...");
-    const prompt =
-      `Please read the specification file at '${this.spec.filePath}' for project '${this.spec.targetProject}'. ` +
-      `Generate a structured visual plan using the /visual-plan skill. ` +
-      `Include data models, component contracts, and architecture diagrams.`;
+    const plansDirectory = path.join(STATE_DIRECTORY, "plans");
+    fs.mkdirSync(plansDirectory, { recursive: true });
+    const markdownPlanPath = path.join(plansDirectory, `${this.spec.identifier}.md`);
 
+    console.log("🧠 Phase 1: Spawning Architect Agent (Gemini 4 Argon High) to design technical architecture...");
+    const architectPrompt =
+      `Please read the specification file at '${this.spec.filePath}' for project '${this.spec.targetProject}'. ` +
+      `Explore the repository to analyze existing patterns, schemas, routing, and component contracts. ` +
+      `Formulate a rigorous technical architecture and save the complete Markdown plan to '${markdownPlanPath}'. ` +
+      `Include: feature breakdown, data models and schema changes, component contracts, implementation steps, and architectural trade-offs. ` +
+      `Focus on technical decisions and write clear, complete Markdown without HTML markup.`;
+
+    const architectSuccess = await this.runAntigravityAgent(
+      `architect-${this.spec.identifier}`,
+      "You are the Lead Software Architect. Explore the codebase and formulate a comprehensive Markdown technical plan.",
+      architectPrompt,
+      this.state.repo_dir,
+      STAGE_MODELS.architect
+    );
+
+    if (!architectSuccess) {
+      console.error("❌ Architect agent execution encountered an error.");
+      return 1;
+    }
+
+    this.state.plan_file = markdownPlanPath;
+
+    console.log("🎨 Phase 2: Spawning Visualizer Agent (Gemini 3.8 Flash) to render standalone /visual-plan HTML report...");
     const outputPath = path.join(os.homedir(), "share", this.spec.targetProject, `${this.spec.identifier}.html`);
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
-    const success = await this.runAntigravityAgent(
-      `planner-${this.spec.identifier}`,
-      "You are the Lead Software Architect. Output a comprehensive /visual-plan HTML report.",
-      prompt,
+    const visualizerPrompt =
+      `Please read the architectural Markdown plan at '${markdownPlanPath}' and specification at '${this.spec.filePath}'. ` +
+      `Using the /visual-plan skill format, generate a rich standalone visual plan HTML report at '${outputPath}'. ` +
+      `Include interactive Mermaid diagrams (for architecture and data flow), structured tables for data models and component contracts, ` +
+      `and visual wireframe blocks illustrating UI states.`;
+
+    const visualizerSuccess = await this.runAntigravityAgent(
+      `visualizer-${this.spec.identifier}`,
+      "You are a Technical Illustrator and UI Designer. Render rich visual plan HTML reports from Markdown designs.",
+      visualizerPrompt,
       this.state.repo_dir,
-      STAGE_MODELS.planner
+      STAGE_MODELS.visualizer
     );
 
-    if (!success) {
-      console.error("❌ Planner agent execution encountered an error.");
+    if (!visualizerSuccess) {
+      console.error("❌ Visualizer agent execution encountered an error.");
       return 1;
     }
 
@@ -1156,25 +1186,29 @@ export class BuildOrchestrator {
       }
     }
 
-    const brainDir = path.join(ANTIGRAVITY_APP_DATA, "brain");
-    if (fs.existsSync(brainDir)) {
-      const folders = fs
-        .readdirSync(brainDir, { withFileTypes: true })
-        .filter((d) => d.isDirectory())
-        .map((d) => path.join(brainDir, d.name))
-        .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+    if (this.state.plan_file && fs.existsSync(this.state.plan_file)) {
+      cmd.push("--written-plan", this.state.plan_file);
+    } else {
+      const brainDir = path.join(ANTIGRAVITY_APP_DATA, "brain");
+      if (fs.existsSync(brainDir)) {
+        const folders = fs
+          .readdirSync(brainDir, { withFileTypes: true })
+          .filter((d) => d.isDirectory())
+          .map((d) => path.join(brainDir, d.name))
+          .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
 
-      for (const folder of folders) {
-        let foundPlan = false;
-        const entries = fs.readdirSync(folder);
-        for (const entry of entries) {
-          if (entry.endsWith(".md") && entry.toLowerCase().includes("plan")) {
-            cmd.push("--written-plan", path.join(folder, entry));
-            foundPlan = true;
-            break;
+        for (const folder of folders) {
+          let foundPlan = false;
+          const entries = fs.readdirSync(folder);
+          for (const entry of entries) {
+            if (entry.endsWith(".md") && entry.toLowerCase().includes("plan")) {
+              cmd.push("--written-plan", path.join(folder, entry));
+              foundPlan = true;
+              break;
+            }
           }
+          if (foundPlan) break;
         }
-        if (foundPlan) break;
       }
     }
 
