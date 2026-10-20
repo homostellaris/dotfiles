@@ -32,6 +32,17 @@ function loadCredentials() {
 }
 loadCredentials();
 
+function getBrowserLaunchOptions(isHeaded = false) {
+  const launchOptions: { headless: boolean; executablePath?: string } = {
+    headless: !isHeaded,
+  };
+  const chromiumExecutable = process.env.CHROMIUM_PATH || '/usr/bin/chromium';
+  if (existsSync(chromiumExecutable)) {
+    launchOptions.executablePath = chromiumExecutable;
+  }
+  return launchOptions;
+}
+
 
 function getWhatsAppTarget(): string {
   // Morrisons skill: prefer group chat target if set
@@ -94,7 +105,7 @@ function logFollowUp(message: string) {
 async function checkCheckoutStatus() {
   await ensureAuthStateExists();
   console.log('Checking checkout status...');
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(getBrowserLaunchOptions());
   const context = await browser.newContext({
     storageState: AUTH_STATE_FILE,
     userAgent: USER_AGENT
@@ -273,6 +284,33 @@ async function acceptCookies(page: any) {
   }
 }
 
+async function handleInteractiveLogin() {
+  console.log('Launching browser for interactive Morrisons authentication...');
+  const browser = await chromium.launch(getBrowserLaunchOptions(true));
+  const context = await browser.newContext({ userAgent: USER_AGENT });
+  const page = await context.newPage();
+
+  try {
+    console.log('Navigating to Morrisons login page...');
+    await page.goto('https://groceries.morrisons.com/login', { waitUntil: 'domcontentloaded' });
+    console.log('👉 Please log in to your Morrisons account in the browser window...');
+    await page.waitForURL(
+      (currentUrl) => !currentUrl.href.includes('auth.morrisons.com') && !currentUrl.href.includes('/login'),
+      { timeout: 300000 }
+    );
+    await page.waitForTimeout(3000);
+
+    console.log(`Saving authentication state to: ${AUTH_STATE_FILE}`);
+    await context.storageState({ path: AUTH_STATE_FILE });
+    console.log('🎉 Successfully authenticated and saved session state!');
+  } catch (error: any) {
+    console.error('❌ Interactive authentication failed:', error.message);
+    process.exit(1);
+  } finally {
+    await browser.close();
+  }
+}
+
 async function handleLogin(email?: string, password?: string) {
   if (!email || !password) {
     console.error('Error: Email and password are required for login.');
@@ -280,7 +318,7 @@ async function handleLogin(email?: string, password?: string) {
   }
 
   console.log('Launching browser for authentication...');
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(getBrowserLaunchOptions());
   const context = await browser.newContext({ userAgent: USER_AGENT });
   const page = await context.newPage();
 
@@ -334,7 +372,7 @@ async function addItemsToBasket(items: string[]) {
   await ensureAuthStateExists();
 
   console.log(`Starting shopping run. Adding ${items.length} items to Morrisons basket...`);
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(getBrowserLaunchOptions());
   const context = await browser.newContext({
     storageState: AUTH_STATE_FILE,
     userAgent: USER_AGENT
@@ -438,7 +476,7 @@ async function viewBasket() {
   await ensureAuthStateExists();
 
   console.log('Retrieving items in Morrisons basket...');
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(getBrowserLaunchOptions());
   const context = await browser.newContext({
     storageState: AUTH_STATE_FILE,
     userAgent: USER_AGENT
@@ -548,7 +586,7 @@ async function listDeliverySlots() {
   await ensureAuthStateExists();
 
   console.log('Checking available delivery slots...');
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(getBrowserLaunchOptions());
   const context = await browser.newContext({
     storageState: AUTH_STATE_FILE,
     userAgent: USER_AGENT
@@ -669,7 +707,7 @@ async function bookDeliverySlot(targetDate: string, targetTime: string) {
   await ensureAuthStateExists();
 
   console.log(`Attempting to book slot: ${targetDate} at ${targetTime}...`);
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(getBrowserLaunchOptions());
   const context = await browser.newContext({
     storageState: AUTH_STATE_FILE,
     userAgent: USER_AGENT,
@@ -837,7 +875,7 @@ async function searchProducts(query: string) {
     process.exit(1);
   }
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(getBrowserLaunchOptions());
   const context = await browser.newContext({
     storageState: AUTH_STATE_FILE,
     userAgent: USER_AGENT
@@ -949,7 +987,7 @@ async function addExactProduct(targetTitle: string) {
   }
 
   console.log(`Adding exact product: "${targetTitle}"...`);
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(getBrowserLaunchOptions());
   const context = await browser.newContext({
     storageState: AUTH_STATE_FILE,
     userAgent: USER_AGENT
@@ -1069,7 +1107,7 @@ interface ShoppingListDetail {
 
 async function createListContext() {
   await ensureAuthStateExists();
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(getBrowserLaunchOptions());
   const context = await browser.newContext({
     storageState: AUTH_STATE_FILE,
     userAgent: USER_AGENT,
@@ -1909,7 +1947,9 @@ async function main() {
   const args = process.argv.slice(2);
   const command = args[0];
 
-  if (command === 'auth') {
+  if (command === 'login' || (command === 'auth' && args.includes('--headed'))) {
+    await handleInteractiveLogin();
+  } else if (command === 'auth') {
     let email = '';
     let password = '';
     for (let i = 1; i < args.length; i++) {
@@ -2070,6 +2110,7 @@ async function main() {
     }
   } else {
     console.log('Usage:');
+    console.log('  bun morrisons-action.ts login');
     console.log('  bun morrisons-action.ts auth --email <email> --password <password>');
     console.log('  bun morrisons-action.ts search "<query>"');
     console.log('  bun morrisons-action.ts add-exact "<exact product title>"');
