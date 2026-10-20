@@ -12,16 +12,19 @@ Automated search and insertion of grocery items to your active Morrisons superma
 
 ## Requirements & Setup
 
-* **Runtime**: [Bun](https://bun.sh) and [Playwright](https://playwright.dev) (`bun install playwright`).
-* **Authentication**: Save your session storage state to `~/.openclaw/workspace/morrisons-auth-state.json` (via `morrisons-action.ts auth` or `morrisons-action.ts import-cookies <cookies.json>`).
-* **Optional Credentials**: Store `MORRISONS_EMAIL` and `MORRISONS_PASSWORD` in `~/.config/morrisons.env`.
+* **Runtime**: [Bun](https://bun.sh) and [Playwright](https://playwright.dev) (`bun install playwright`). A system Chromium installation (e.g. `/usr/bin/chromium` or configured via `CHROMIUM_PATH`) is automatically detected if Playwright browser caches are missing.
+* **Authentication**: Save your session storage state to `~/.openclaw/workspace/morrisons-auth-state.json`.
+  * **Option 1 (Interactive Headed Login - Recommended)**: Run `bun morrisons-action.ts login`. This opens a browser window for you to complete Morrisons login (passing Cloudflare Turnstile bot checks) and automatically dumps the fresh session state.
+  * **Option 2 (Cookie Import)**: Export or copy cookies and run `bun morrisons-action.ts import-cookies <cookies-file>`.
+* **Optional Credentials**: Store `MORRISONS_EMAIL` and `MORRISONS_PASSWORD` in `~/.config/morrisons.env` for automated headless fallback attempts.
 
 ## Arguments
 
 * `$ARGUMENTS[0]` — Command to execute:
+  * Authentication: `login`, `auth`, `import-cookies`
   * Orders & History: `orders`, `order`
   * Shopping Lists: `lists`, `list`, `create-list`, `rename-list`, `list-add`, `list-remove`, `delete-list`, `list-to-cart`
-  * Trolley & Slots: `search`, `add-exact`, `add`, `cart`, `slots`, `book-slot`, `check-checkout`, `auth`, `import-cookies`
+  * Trolley & Slots: `search`, `add-exact`, `add`, `cart`, `slots`, `book-slot`, `check-checkout`
 * `$ARGUMENTS[1]` — Primary argument:
   * For `orders`: Number of orders to fetch (e.g. `5` or `10`, default `10`).
   * For `order` / `view-order`: Order reference ID (e.g. `1126176030930`) or `latest`.
@@ -29,7 +32,7 @@ Automated search and insertion of grocery items to your active Morrisons superma
   * For `add-exact`: Exact product title returned by search (e.g. `Morrisons British Semi Skimmed Milk 4 Pint`).
   * For `add`: Comma-separated list of items (e.g. `milk,bananas`).
   * For `book-slot`: Date/Day target (e.g. `Monday`).
-  * For `import-cookies`: Path to exported cookies JSON file.
+  * For `import-cookies`: Path to exported cookies JSON file or raw cookie text.
   * For `list` / `view-list`: List name or ID (e.g. `Weekly` or `ee2e3713-0018-4a60-a28e-862d2bb78e0b`).
   * For `create-list`: Name for new list (e.g. `Weekend Brunch`).
   * For `rename-list` / `edit-list`: Existing list name or ID.
@@ -152,11 +155,31 @@ bun morrisons-action.ts check-checkout
 ```
 
 ### 10. Setup / Session authentication
-Import cookies:
+
+#### Interactive Headed Login (Recommended)
+Launches a browser window, waits for you to complete login and solve any Cloudflare Turnstile / 2FA challenges, then automatically saves the session state to `~/.openclaw/workspace/morrisons-auth-state.json`:
 ```bash
-bun morrisons-action.ts import-cookies "$ARGUMENTS[1]"
+bun morrisons-action.ts login
 ```
-Direct Login:
+
+#### Manual Cookie Import
+When extracting cookies from your everyday browser (Chrome, Firefox, Brave):
+> [!IMPORTANT]
+> 1. **Correct Subdomain**: Cookies must be exported from **`groceries.morrisons.com`**, not `morrisons.com` (which only holds marketing/loyalty tokens like `__session__0`).
+> 2. **Crucial Cookie (`global_sid`)**: The actual grocery session identifier is **`global_sid`**.
+> 3. **The `HttpOnly` Gotcha**: Because `global_sid` has the `HttpOnly` flag, copying `document.cookie` in the browser developer console will **never** include it.
+> 4. **How to Copy**:
+>    - **From DevTools Storage**: Open DevTools (`F12`) → **Application** (or **Storage**) → **Cookies** → `https://groceries.morrisons.com` → find and copy `global_sid`. You can put `global_sid=<value>` in a file.
+>    - **From DevTools Network**: In the **Network** tab, click any request to `groceries.morrisons.com` → find the `Cookie:` header under **Request Headers** → right-click and **Copy value** into a file (e.g. `/tmp/morrisons-cookies.txt`).
+>    - **From Extension**: Export cookies JSON using an extension like *Cookie-Editor*.
+
+Import the cookies file:
 ```bash
-bun morrisons-action.ts auth $ARGUMENTS[1]
+bun morrisons-action.ts import-cookies /path/to/cookies-file
+```
+
+#### Direct Headless Login (Fallback)
+Attempts automated headless login (may trigger Turnstile captcha):
+```bash
+bun morrisons-action.ts auth --email "$MORRISONS_EMAIL" --password "$MORRISONS_PASSWORD"
 ```
