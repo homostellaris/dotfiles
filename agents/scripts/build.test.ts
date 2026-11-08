@@ -152,4 +152,38 @@ Here is the specification details.
       })
     ).toBe(true);
   });
+
+  it("parses --approve flag correctly", () => {
+    const parsedArguments = parseArguments(["--spec-id", "canvas-section_y2vtpcom", "--approve"]);
+    expect(parsedArguments.approve).toBe(true);
+    expect(parsedArguments.specId).toBe("canvas-section_y2vtpcom");
+  });
+
+  it("approves human review when approveFlag is set", () => {
+    const reviewOrchestrator = new BuildOrchestrator(
+      "canvas-section_y2vtpcom",
+      undefined,
+      false,
+      undefined,
+      true
+    );
+    expect(reviewOrchestrator.checkHumanReviewStatus()).toBe("APPROVED");
+  });
+
+  it("returns pending for human review when not yet approved", () => {
+    const unapprovedOrchestrator = new BuildOrchestrator(
+      "canvas-section_y2vtpcom",
+      undefined,
+      false,
+      undefined,
+      false
+    );
+    expect(unapprovedOrchestrator.checkHumanReviewStatus()).toBe("PENDING");
+  });
+
+  it("fails repository test gate when worktree directory does not exist", () => {
+    const testResult = orchestrator.runRepositoryTestGate("/nonexistent/directory/path");
+    expect(testResult.success).toBe(false);
+    expect(testResult.output).toContain("does not exist");
+  });
 });

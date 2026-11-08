@@ -71,10 +71,14 @@ export interface BuildState {
   repo_dir: string;
   worktree_dir?: string;
   branch_name?: string;
+  port?: number;
   stage: string;
   plan_file?: string;
   visual_plan_url?: string;
   plan_approved: boolean;
+  repo_tests_passed?: boolean;
+  human_reviewed?: boolean;
+  dev_url?: string;
   pr_number?: number;
   pr_url?: string;
   pr_approved: boolean;
@@ -134,6 +138,7 @@ export class BuildOrchestrator {
   public projectOverride?: string;
   public dryRun: boolean;
   public inlinePrompt?: string;
+  public approveFlag: boolean;
   public spec: SpecMetadata | null = null;
   public state: BuildState | null = null;
 
@@ -141,12 +146,14 @@ export class BuildOrchestrator {
     specQuery: string = "",
     projectOverride?: string,
     dryRun: boolean = false,
-    inlinePrompt?: string
+    inlinePrompt?: string,
+    approveFlag: boolean = false
   ) {
     this.specQuery = specQuery;
     this.projectOverride = projectOverride;
     this.dryRun = dryRun;
     this.inlinePrompt = inlinePrompt;
+    this.approveFlag = approveFlag;
   }
 
   async execute(): Promise<number> {
@@ -411,9 +418,22 @@ export class BuildOrchestrator {
       return "SETUP_WORKTREE";
     }
 
-    const testsPass = this.runLocalTestGate(this.state.worktree_dir);
-    if (!testsPass) {
+    const unitTestsPass = this.runLocalTestGate(this.state.worktree_dir);
+    if (!unitTestsPass) {
       return "IMPLEMENT_AND_FIX_LOCAL";
+    }
+
+    const repositoryTestResult = this.runRepositoryTestGate(this.state.worktree_dir);
+    if (!repositoryTestResult.success) {
+      return "FIX_CI_FAILURES";
+    }
+
+    const humanReviewStatus = this.checkHumanReviewStatus();
+    if (humanReviewStatus === "FEEDBACK_RECEIVED") {
+      return "RESOLVE_PR_COMMENTS";
+    }
+    if (humanReviewStatus !== "APPROVED") {
+      return "AWAIT_HUMAN_REVIEW";
     }
 
     if (this.state.deployed) {
@@ -511,17 +531,17 @@ export class BuildOrchestrator {
     return fs.existsSync(worktreeDir) && fs.existsSync(path.join(worktreeDir, ".git"));
   }
 
-  runLocalTestGate(worktreeDir?: string): boolean {
-    if (!worktreeDir || !fs.existsSync(worktreeDir)) {
+  runLocalTestGate(worktreeDirectory?: string): boolean {
+    if (!worktreeDirectory || !fs.existsSync(worktreeDirectory)) {
       return false;
     }
 
     let command = ["bun", "test"];
-    const packageJsonPath = path.join(worktreeDir, "package.json");
+    const packageJsonPath = path.join(worktreeDirectory, "package.json");
     if (fs.existsSync(packageJsonPath)) {
       try {
-        const pkgData = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
-        const scripts = pkgData.scripts || {};
+        const packageData = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+        const scripts = packageData.scripts || {};
         if ("unit" in scripts) {
           command = ["bun", "run", "unit"];
         } else if ("test" in scripts) {
@@ -530,8 +550,180 @@ export class BuildOrchestrator {
       } catch {}
     }
 
-    const res = runCommand(command, { cwd: worktreeDir, capture: true });
-    return res.status === 0;
+    const testExecution = runCommand(command, { cwd: worktreeDirectory, capture: true });
+    return testExecution.status === 0;
+  }
+
+  runRepositoryTestGate(worktreeDirectory?: string): { success: boolean; output: string } {
+    if (!worktreeDirectory || !fs.existsSync(worktreeDirectory)) {
+      return { success: false, output: "Worktree directory does not exist." };
+    }
+
+    let command = ["bun", "test"];
+    const packageJsonPath = path.join(worktreeDirectory, "package.json");
+    if (fs.existsSync(packageJsonPath)) {
+      try {
+        const packageData = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+        const scripts = packageData.scripts || {};
+        if ("test" in scripts) {
+          command = ["bun", "run", "test"];
+        } else if ("check" in scripts) {
+          command = ["bun", "run", "check"];
+        }
+      } catch {}
+    }
+
+    console.log(`🧪 Running repository test script in worktree: ${command.join(" ")}`);
+    const testExecution = runCommand(command, { cwd: worktreeDirectory, capture: true });
+    return {
+      success: testExecution.status === 0,
+      output: (testExecution.stdout + "\n" + testExecution.stderr).trim(),
+    };
+  }
+
+  checkHumanReviewStatus(): string {
+    if (this.approveFlag || this.state?.human_reviewed || this.state?.pr_approved) {
+      if (this.state) {
+        this.state.human_reviewed = true;
+        this.saveState(this.state);
+      }
+      return "APPROVED";
+    }
+
+    const transcriptFile = this.spec ? this.findLatestTranscriptForSpec(this.spec.identifier) : null;
+    if (transcriptFile && fs.existsSync(transcriptFile)) {
+      const reviewApproval = this.inspectTranscriptForReviewApproval(transcriptFile);
+      if (reviewApproval === "APPROVED") {
+        if (this.state) {
+          this.state.human_reviewed = true;
+          this.saveState(this.state);
+        }
+        return "APPROVED";
+      }
+      if (reviewApproval === "FEEDBACK") {
+        return "FEEDBACK_RECEIVED";
+      }
+    }
+
+    return "PENDING";
+  }
+
+  inspectTranscriptForReviewApproval(transcriptPath: string): string {
+    try {
+      const content = fs.readFileSync(transcriptPath, "utf-8");
+      const lines = content.trim().split("\n");
+
+      for (let index = lines.length - 1; index >= 0; index--) {
+        const line = lines[index];
+        if (!line.trim()) continue;
+        const entry = JSON.parse(line);
+        if (entry.type === "USER_INPUT") {
+          const userContent = String(entry.content || "").toLowerCase();
+          if (
+            ["proceed", "approved", "looks good", "ship it", "yes", "lgtm"].some((word) =>
+              userContent.includes(word)
+            )
+          ) {
+            return "APPROVED";
+          }
+          if (
+            ["change", "fix", "update", "revise", "instead", "broken", "issue"].some((word) =>
+              userContent.includes(word)
+            )
+          ) {
+            return "FEEDBACK";
+          }
+        }
+      }
+    } catch {}
+    return "PENDING";
+  }
+
+  getLatestFeedbackFromTranscript(transcriptPath: string): string {
+    try {
+      const content = fs.readFileSync(transcriptPath, "utf-8");
+      const lines = content.trim().split("\n");
+
+      for (let index = lines.length - 1; index >= 0; index--) {
+        const line = lines[index];
+        if (!line.trim()) continue;
+        const entry = JSON.parse(line);
+        if (entry.type === "USER_INPUT") {
+          const feedbackText = String(entry.content || "").trim();
+          if (feedbackText) return feedbackText;
+        }
+      }
+    } catch {}
+    return "";
+  }
+
+  getWorktreePort(worktreeDirectory?: string): number {
+    if (worktreeDirectory) {
+      const environmentLocalPath = path.join(worktreeDirectory, ".env.local");
+      if (fs.existsSync(environmentLocalPath)) {
+        const content = fs.readFileSync(environmentLocalPath, "utf-8");
+        const portMatch = content.match(/^PORT=(\d+)/m);
+        if (portMatch) {
+          return parseInt(portMatch[1], 10);
+        }
+      }
+    }
+
+    const registryPath = path.join(STATE_DIRECTORY, "ports.json");
+    if (fs.existsSync(registryPath)) {
+      try {
+        const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
+        const registryKey = `${this.spec?.targetProject}:${this.spec?.identifier}`;
+        if (registry.assignments?.[registryKey]?.port) {
+          return registry.assignments[registryKey].port;
+        }
+      } catch {}
+    }
+
+    return 6605;
+  }
+
+  ensureDevServerRunning(worktreeDirectory: string, portNumber: number): void {
+    const portCheck = runCommand(["lsof", "-i", `:${portNumber}`], { capture: true });
+    if (portCheck.status === 0 && portCheck.stdout.trim().length > 0) {
+      console.log(`🔌 Dev server is already active on port ${portNumber}`);
+      return;
+    }
+
+    console.log(`🚀 Starting local dev server on port ${portNumber} in background...`);
+    const logsDirectory = path.join(STATE_DIRECTORY, "logs");
+    fs.mkdirSync(logsDirectory, { recursive: true });
+    const logPath = path.join(logsDirectory, `dev-${this.spec?.identifier}.log`);
+    const outputHandle = fs.openSync(logPath, "a");
+
+    const childProcessInstance = child_process.spawn("bun", ["run", "dev"], {
+      cwd: worktreeDirectory,
+      detached: true,
+      stdio: ["ignore", outputHandle, outputHandle],
+      env: { ...process.env, PORT: String(portNumber) },
+    });
+    childProcessInstance.unref();
+    console.log(`📄 Dev server logs: ${logPath}`);
+  }
+
+  getDevUrls(portNumber: number): { localUrl: string; tailscaleUrl: string } {
+    const localUrl = `http://localhost:${portNumber}`;
+    let tailscaleHostname = "";
+    try {
+      const statusJson = child_process.spawnSync("tailscale", ["status", "--json"], {
+        encoding: "utf-8",
+        timeout: 2000,
+      });
+      if (statusJson.status === 0 && statusJson.stdout.trim()) {
+        const status = JSON.parse(statusJson.stdout);
+        if (status.Self?.DNSName) {
+          tailscaleHostname = status.Self.DNSName.replace(/\.$/, "");
+        }
+      }
+    } catch {}
+
+    const tailscaleUrl = tailscaleHostname ? `http://${tailscaleHostname}:${portNumber}` : localUrl;
+    return { localUrl, tailscaleUrl };
   }
 
   fetchPrDetails(repoDir: string, branchName?: string): Record<string, any> | null {
@@ -971,19 +1163,16 @@ export class BuildOrchestrator {
   }
 
   async handleFixCi(): Promise<number> {
-    if (!this.spec || !this.state || !this.state.worktree_dir || !this.state.branch_name) return 1;
+    if (!this.spec || !this.state || !this.state.worktree_dir) return 1;
 
-    console.log(`❌ CI failure detected on PR #${this.state.pr_number}. Fetching failed logs...`);
-    const failedLogsRes = runCommand(["gh", "run", "view", "--log-failed"], {
-      cwd: this.state.repo_dir,
-      capture: true,
-    });
-    const failedLogs = (failedLogsRes.stdout || "").slice(0, 4000);
+    console.log("❌ Repository test script failed. Spawning automated repair agent in Herdr...");
+    const repositoryTestResult = this.runRepositoryTestGate(this.state.worktree_dir);
+    const failureLogs = repositoryTestResult.output.slice(0, 4000);
 
     const repairPrompt =
-      `The GitHub Actions CI pipeline failed on your PR branch. ` +
-      `Here are the failed logs:\n\n\`\`\`\n${failedLogs}\n\`\`\`\n\n` +
-      `Please address the root cause, fix the code, run local tests, and push updates.`;
+      `The repository test suite failed in your worktree.\n\n` +
+      `Failure output:\n\`\`\`\n${failureLogs}\n\`\`\`\n\n` +
+      `Please address the root cause, fix the errors, and verify that the repository test suite passes.`;
 
     await this.runAgentInHerdr(
       `impl-${this.spec.identifier}`,
@@ -992,41 +1181,82 @@ export class BuildOrchestrator {
       STAGE_MODELS.ciRepair
     );
 
-    runCommand(["git", "add", "."], { cwd: this.state.worktree_dir, capture: false });
-    runCommand(
-      [
-        "git",
-        "commit",
-        "-m",
-        "🐛 fix CI pipeline failure\n\nCo-authored-by: Antigravity <antigravity@google.com>",
-      ],
-      { cwd: this.state.worktree_dir, capture: false }
-    );
-    runCommand(["git", "push", "origin", this.state.branch_name], {
-      cwd: this.state.worktree_dir,
-      capture: false,
-    });
-    console.log("✅ Pushed CI repair commit.");
-    return 0;
+    if (this.hasUncommittedChanges(this.state.worktree_dir)) {
+      runCommand(["git", "add", "."], { cwd: this.state.worktree_dir, capture: false });
+      runCommand(
+        [
+          "git",
+          "commit",
+          "-m",
+          "🐛 fix repository test suite failure\n\nCo-authored-by: Antigravity <antigravity@google.com>",
+        ],
+        { cwd: this.state.worktree_dir, capture: false }
+      );
+    }
+
+    const retestResult = this.runRepositoryTestGate(this.state.worktree_dir);
+    if (retestResult.success) {
+      console.log("✅ Repository test script now passes.");
+      this.state.repo_tests_passed = true;
+      this.saveState(this.state);
+      return 0;
+    }
+
+    console.log("⚠️ Repository tests still failing. Will retry repair on next cycle.");
+    return 1;
+  }
+
+  handleAwaitHumanReview(): void {
+    if (!this.spec || !this.state || !this.state.worktree_dir) return;
+
+    const assignedPort = this.getWorktreePort(this.state.worktree_dir);
+    this.ensureDevServerRunning(this.state.worktree_dir, assignedPort);
+    const { localUrl, tailscaleUrl } = this.getDevUrls(assignedPort);
+
+    this.state.port = assignedPort;
+    this.state.dev_url = tailscaleUrl;
+    this.state.stage = "AWAIT_HUMAN_REVIEW";
+    this.publishTaskDashboard("HUMAN REVIEW");
+    this.saveState(this.state);
+
+    const herdrAgentName = `impl-${this.spec.identifier}`;
+
+    console.log("\n==================================================");
+    console.log(`⏸️  Awaiting Human Review: ${this.spec.title}`);
+    console.log("==================================================");
+    console.log(`🌐 Local Dev Server:   ${localUrl}`);
+    console.log(`📱 Tailscale Dev URL:  ${tailscaleUrl}`);
+    console.log(`✨ Vercel Toolbar:     Active for visual comments and annotations in-browser`);
+    console.log(`💬 Herdr Session:      herdr session attach default`);
+    console.log(`👉 Send feedback:      herdr agent prompt ${herdrAgentName} "<your comments>"`);
+    console.log(`\n✅ Once satisfied, approve via:`);
+    console.log(`   - Reply 'approve' on WhatsApp or in transcript`);
+    console.log(`   - Run: build --spec-id ${this.spec.identifier} --approve`);
+    console.log("==================================================\n");
+
+    const notificationMessage =
+      `⏸️ [Human Review Required] '${this.spec.title}' is ready for review!\n` +
+      `🌐 Local: ${localUrl}\n` +
+      `📱 Tailscale: ${tailscaleUrl}\n` +
+      `✨ Use Vercel Toolbar for comments or prompt herdr agent '${herdrAgentName}'.\n` +
+      `Reply 'approve' or run 'build --spec-id ${this.spec.identifier} --approve' to merge.`;
+    this.sendOpenclawNotification(notificationMessage);
   }
 
   async handleResolvePrComments(): Promise<number> {
-    if (!this.spec || !this.state || !this.state.worktree_dir || !this.state.branch_name) return 1;
+    if (!this.spec || !this.state || !this.state.worktree_dir) return 1;
 
-    console.log(`💬 Resolving human review comments on PR #${this.state.pr_number}...`);
-    const commentsRes = runCommand(
-      [
-        "gh",
-        "api",
-        `/repos/homostellaris/${this.spec.targetProject}/pulls/${this.state.pr_number}/comments`,
-      ],
-      { cwd: this.state.repo_dir, capture: true }
-    );
-    const commentsJson = commentsRes.stdout;
+    console.log("💬 Resolving human review comments in worktree...");
+    const transcriptPath = this.findLatestTranscriptForSpec(this.spec.identifier);
+    let latestFeedback = "";
+    if (transcriptPath && fs.existsSync(transcriptPath)) {
+      latestFeedback = this.getLatestFeedbackFromTranscript(transcriptPath);
+    }
 
-    const fixPrompt =
-      `The reviewer left comments on your pull request:\n\n${commentsJson}\n\n` +
-      `Please implement the requested changes, run local tests, and prepare for push.`;
+    const fixPrompt = latestFeedback
+      ? `The human reviewer provided feedback on the implementation:\n\n"${latestFeedback}"\n\n` +
+        `Please address the comments, update components and tests accordingly, and ensure tests pass.`
+      : `Please review recent comments and feedback from the human reviewer, implement requested adjustments, and verify tests pass.`;
 
     await this.runAgentInHerdr(
       `impl-${this.spec.identifier}`,
@@ -1035,21 +1265,20 @@ export class BuildOrchestrator {
       STAGE_MODELS.commentResolver
     );
 
-    runCommand(["git", "add", "."], { cwd: this.state.worktree_dir, capture: false });
-    runCommand(
-      [
-        "git",
-        "commit",
-        "-m",
-        "♻️ address human review feedback\n\nCo-authored-by: Antigravity <antigravity@google.com>",
-      ],
-      { cwd: this.state.worktree_dir, capture: false }
-    );
-    runCommand(["git", "push", "origin", this.state.branch_name], {
-      cwd: this.state.worktree_dir,
-      capture: false,
-    });
-    console.log("✅ Feedback addressed and updates pushed.");
+    if (this.hasUncommittedChanges(this.state.worktree_dir)) {
+      runCommand(["git", "add", "."], { cwd: this.state.worktree_dir, capture: false });
+      runCommand(
+        [
+          "git",
+          "commit",
+          "-m",
+          "♻️ address human review feedback\n\nCo-authored-by: Antigravity <antigravity@google.com>",
+        ],
+        { cwd: this.state.worktree_dir, capture: false }
+      );
+    }
+
+    console.log("✅ Human feedback addressed. Returning to test and review cycle.");
     return 0;
   }
 
@@ -1375,6 +1604,13 @@ export class BuildOrchestrator {
     console.log(`Target Repo:    ${this.state?.repo_dir}`);
     console.log(`Worktree Path:  ${this.state?.worktree_dir}`);
     console.log(`Feature Branch: ${this.state?.branch_name}`);
+    if (this.state?.worktree_dir) {
+      const assignedPort = this.getWorktreePort(this.state.worktree_dir);
+      const { localUrl, tailscaleUrl } = this.getDevUrls(assignedPort);
+      console.log(`Dev Port:       ${assignedPort}`);
+      console.log(`Local URL:      ${localUrl}`);
+      console.log(`Tailscale URL:  ${tailscaleUrl}`);
+    }
     console.log(`Evaluated Next: ${stage}`);
     console.log("--------------------------\n");
   }
@@ -1388,6 +1624,7 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
       project: { type: "string" },
       "dry-run": { type: "boolean", default: false },
       status: { type: "boolean", default: false },
+      approve: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
     allowPositionals: true,
@@ -1405,6 +1642,7 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     console.log("\nOptions:");
     console.log("  --spec-id <id>        Pre-written spec identifier, slug, or file path in Obsidian todos.");
     console.log("  --project <project>   Override inferred target project (e.g. banerry, starfocus).");
+    console.log("  --approve             Approve plan or human review gate and advance workflow.");
     console.log("  --dry-run             Inspect external state and planned actions without side effects.");
     console.log("  --status              Display current build lifecycle state.");
     console.log("  -h, --help            Show this help message and exit.");
@@ -1415,6 +1653,7 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     prompt: inlinePrompt,
     specId: specId || "",
     project: values.project,
+    approve: Boolean(values.approve),
     dryRun: Boolean(values["dry-run"] || values.status),
   };
 }
@@ -1425,7 +1664,8 @@ async function main() {
     parsedArguments.specId,
     parsedArguments.project,
     parsedArguments.dryRun,
-    parsedArguments.prompt
+    parsedArguments.prompt,
+    parsedArguments.approve
   );
   const exitCode = await orchestrator.execute();
   process.exit(exitCode);
