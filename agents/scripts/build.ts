@@ -1636,6 +1636,9 @@ export class BuildOrchestrator {
 
       if (existingAgent) {
         console.log(`🐾 Reusing existing Herdr agent '${agentName}' in session '${sessionName}' (status: ${existingAgent.agent_status || "idle"})`);
+        if (existingAgent.agent_status === "blocked") {
+          runCommand([herdrBin, "--session", sessionName, "agent", "send-keys", agentName, "enter"], { capture: true });
+        }
         if (existingAgent.agent_status === "working") {
           console.log(`⏳ Agent '${agentName}' is already actively working. Waiting for completion...`);
           const waitResult = runCommand(
@@ -1721,6 +1724,7 @@ export class BuildOrchestrator {
           "--",
           "--model",
           model,
+          "--dangerously-skip-permissions",
         ];
         const startResult = runCommand(startCmd, { capture: true });
         if (startResult.status !== 0) {
@@ -1771,7 +1775,7 @@ export class BuildOrchestrator {
     ]);
 
     if (agyBinary && fs.existsSync(agyBinary)) {
-      const res = runCommand([agyBinary, "--model", model, "--print", prompt], {
+      const res = runCommand([agyBinary, "--model", model, "--dangerously-skip-permissions", "--print", prompt], {
         cwd: workingDir,
         capture: false,
       });
