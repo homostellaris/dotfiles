@@ -429,7 +429,7 @@ export class BuildOrchestrator {
 
     const humanReviewStatus = this.checkHumanReviewStatus();
     if (humanReviewStatus === "FEEDBACK_RECEIVED") {
-      return "RESOLVE_PR_COMMENTS";
+      return "RESOLVE_FEEDBACK";
     }
     if (humanReviewStatus !== "APPROVED") {
       return "AWAIT_HUMAN_REVIEW";
@@ -865,11 +865,11 @@ export class BuildOrchestrator {
       console.log("⏳ CI checks are currently running. Exiting cleanly. Re-run after CI finishes.");
       return 0;
     }
-    if (stage === "RESOLVE_PR_COMMENTS") {
-      return await this.handleResolvePrComments();
+    if (stage === "RESOLVE_FEEDBACK" || stage === "RESOLVE_PR_COMMENTS") {
+      return await this.handleResolveFeedback();
     }
     if (stage === "AWAIT_HUMAN_REVIEW") {
-      console.log(`⏸️  Awaiting human PR review: ${this.state?.pr_url}`);
+      this.handleAwaitHumanReview();
       return 0;
     }
     if (stage === "RUN_VERIFIER_AGENT") {
@@ -1242,10 +1242,10 @@ export class BuildOrchestrator {
     this.sendOpenclawNotification(notificationMessage);
   }
 
-  async handleResolvePrComments(): Promise<number> {
+  async handleResolveFeedback(): Promise<number> {
     if (!this.spec || !this.state || !this.state.worktree_dir) return 1;
 
-    console.log("💬 Resolving human review comments in worktree...");
+    console.log("💬 Resolving human review feedback in worktree...");
     const transcriptPath = this.findLatestTranscriptForSpec(this.spec.identifier);
     let latestFeedback = "";
     if (transcriptPath && fs.existsSync(transcriptPath)) {
@@ -1294,6 +1294,10 @@ export class BuildOrchestrator {
 
     console.log("✅ Human feedback addressed. Returning to test and review cycle.");
     return 0;
+  }
+
+  async handleResolvePrComments(): Promise<number> {
+    return await this.handleResolveFeedback();
   }
 
   async handleVerifierAgent(): Promise<number> {

@@ -213,4 +213,38 @@ Here is the specification details.
     });
     expect(feedbackOrchestrator.checkHumanReviewStatus()).toBe("FEEDBACK_RECEIVED");
   });
+
+  it("evaluates external state as RESOLVE_FEEDBACK when human review has unresolved feedback", () => {
+    const feedbackOrchestrator = new BuildOrchestrator(
+      "canvas-section_y2vtpcom",
+      undefined,
+      false,
+      undefined,
+      false
+    );
+    feedbackOrchestrator.state = {
+      spec_id: "canvas-section_y2vtpcom",
+      title: "Canvas Section",
+      repo_dir: process.cwd(),
+      stage: "AWAIT_HUMAN_REVIEW",
+      branch_name: "canvas-section_y2vtpcom",
+      worktree_dir: process.cwd(),
+    };
+    feedbackOrchestrator.spec = {
+      identifier: "canvas-section_y2vtpcom",
+      title: "Canvas Section",
+      filePath: "/fake/path.md",
+      content: "",
+      project: "starfocus",
+      metadata: {},
+    };
+    feedbackOrchestrator.checkPlanApprovalStatus = () => "APPROVED";
+    feedbackOrchestrator.isWorktreeInitialized = () => true;
+    feedbackOrchestrator.hasUncommittedChanges = () => false;
+    feedbackOrchestrator.runLocalTestGate = () => true;
+    feedbackOrchestrator.runRepositoryTestGate = () => ({ success: true, output: "" });
+    feedbackOrchestrator.checkHumanReviewStatus = () => "FEEDBACK_RECEIVED";
+
+    expect(feedbackOrchestrator.determineExternalState()).toBe("RESOLVE_FEEDBACK");
+  });
 });
