@@ -254,8 +254,8 @@ const server = http.createServer(async (req, res) => {
     'Access-Control-Allow-Origin': '*',
   };
 
-  // Prevent aggressive browser caching of HTML, manifest, and service worker files
-  if (ext === '.html' || ext === '.webmanifest' || path.basename(filePath) === 'sw.js') {
+  // Prevent aggressive browser caching of HTML, CSS, JS, manifest, and service worker files
+  if (ext === '.html' || ext === '.webmanifest' || path.basename(filePath) === 'sw.js' || ext === '.css' || ext === '.js') {
     headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
     headers['Pragma'] = 'no-cache';
     headers['Expires'] = '0';

@@ -102,19 +102,34 @@ function renderMarkdownToHtml(markdownText) {
   
   let html = escapeHtml(markdownText);
 
+  // Fenced Code blocks & Mermaid (must run BEFORE inline code to protect backticks)
+  const codeBlocks = [];
+  html = html.replace(/```([a-z0-9_-]*)\r?\n([\s\S]*?)```/gim, (match, lang, code) => {
+    const placeholder = `%%CODE_BLOCK_${codeBlocks.length}%%`;
+    if (lang.toLowerCase() === 'mermaid') {
+      codeBlocks.push(`<pre class="mermaid">${code.trim()}</pre>`);
+    } else {
+      codeBlocks.push(`<pre class="code-block language-${lang}"><code>${code.trim()}</code></pre>`);
+    }
+    return placeholder;
+  });
+
   // Headers
   html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
   html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
   html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
 
   // Alerts
-  html = html.replace(/&gt;\s*\[!NOTE\]\s*\n&gt;\s*(.*)/gim, '<div class="alert alert-note"><strong>NOTE:</strong> $1</div>');
-  html = html.replace(/&gt;\s*\[!TIP\]\s*\n&gt;\s*(.*)/gim, '<div class="alert alert-tip"><strong>TIP:</strong> $1</div>');
-  html = html.replace(/&gt;\s*\[!IMPORTANT\]\s*\n&gt;\s*(.*)/gim, '<div class="alert alert-important"><strong>IMPORTANT:</strong> $1</div>');
-  html = html.replace(/&gt;\s*\[!WARNING\]\s*\n&gt;\s*(.*)/gim, '<div class="alert alert-warning"><strong>WARNING:</strong> $1</div>');
+  html = html.replace(/&gt;\s*\[!NOTE\]\s*\r?\n&gt;\s*(.*)/gim, '<div class="alert alert-note"><strong>NOTE:</strong> $1</div>');
+  html = html.replace(/&gt;\s*\[!TIP\]\s*\r?\n&gt;\s*(.*)/gim, '<div class="alert alert-tip"><strong>TIP:</strong> $1</div>');
+  html = html.replace(/&gt;\s*\[!IMPORTANT\]\s*\r?\n&gt;\s*(.*)/gim, '<div class="alert alert-important"><strong>IMPORTANT:</strong> $1</div>');
+  html = html.replace(/&gt;\s*\[!WARNING\]\s*\r?\n&gt;\s*(.*)/gim, '<div class="alert alert-warning"><strong>WARNING:</strong> $1</div>');
 
   // Blockquotes
   html = html.replace(/^&gt; (.*$)/gim, '<blockquote>$1</blockquote>');
+
+  // Horizontal rules
+  html = html.replace(/^---$/gim, '<hr class="divider">');
 
   // Bold & Italic
   html = html.replace(/\*\*\*(.*?)\*\*\*/gim, '<b><i>$1</i></b>');
@@ -122,12 +137,7 @@ function renderMarkdownToHtml(markdownText) {
   html = html.replace(/\*(.*?)\*/gim, '<i>$1</i>');
 
   // Inline Code
-  html = html.replace(/`([^`]+)`/gim, '<code>$1</code>');
-
-  // Fenced Code blocks
-  html = html.replace(/```([a-z0-9_-]*)\n([\s\S]*?)```/gim, (match, lang, code) => {
-    return `<pre class="code-block language-${lang}"><code>${code.trim()}</code></pre>`;
-  });
+  html = html.replace(/`([^`\n]+)`/gim, '<code>$1</code>');
 
   // Checkbox lists
   html = html.replace(/^- \[x\] (.*$)/gim, '<li class="task-item checked"><input type="checkbox" checked disabled> $1</li>');
@@ -142,11 +152,227 @@ function renderMarkdownToHtml(markdownText) {
   html = `<p>${html}</p>`;
   html = html.replace(/<p><\/p>/g, '');
   html = html.replace(/<p>(<h[1-6]>.*?<\/h[1-6]>)<\/p>/g, '$1');
-  html = html.replace(/<p>(<pre[\s\S]*?<\/pre>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<hr class="divider">)<\/p>/g, '$1');
   html = html.replace(/<p>(<div class="alert[\s\S]*?<\/div>)<\/p>/g, '$1');
   html = html.replace(/<p>(<li[\s\S]*?<\/li>)<\/p>/g, '<ul>$1</ul>');
 
+  // Restore code blocks (cleanly outside or replacing p wrappers)
+  codeBlocks.forEach((block, idx) => {
+    html = html.replace(new RegExp(`<p>%%CODE_BLOCK_${idx}%%<\\/p>|%%CODE_BLOCK_${idx}%%`, 'g'), block);
+  });
+
   return html;
+}
+
+function generatePlanHtml(meta, planMarkdown) {
+  const specId = escapeHtml(meta.specId);
+  const title = escapeHtml(meta.title || meta.specId);
+  const project = escapeHtml(meta.project || 'starfocus');
+  const status = escapeHtml(meta.status || 'PLAN REVIEW');
+  const renderedContent = renderMarkdownToHtml(planMarkdown);
+
+  let statusBadgeClass = 'badge-default';
+  if (meta.status === 'IN_PROGRESS' || meta.status === 'IMPLEMENTING') statusBadgeClass = 'badge-warning';
+  if (meta.status === 'PR_OPEN' || meta.status === 'AWAITING_PR_REVIEW') statusBadgeClass = 'badge-purple';
+  if (meta.status === 'VERIFIED' || meta.status === 'APPROVED') statusBadgeClass = 'badge-success';
+  if (meta.status === 'DEPLOYED' || meta.status === 'COMPLETED') statusBadgeClass = 'badge-success';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Written Plan — ${title}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/_style/house-style.css?v=2">
+  <script src="/_style/house-style.js" defer></script>
+  <style>
+    :root {
+      --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-heading: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    html, body, p, div, span, li, a, button {
+      font-family: var(--font-sans) !important;
+      image-rendering: auto !important;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      font-family: var(--font-heading) !important;
+      font-weight: 700;
+    }
+    code, pre, pre code {
+      font-family: var(--font-mono) !important;
+    }
+    .plan-page-shell {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 24px 16px 80px;
+    }
+    .plan-top-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .plan-breadcrumbs {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+    .plan-back-link {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .plan-back-link:hover {
+      text-decoration: underline;
+    }
+    .plan-header-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+      margin-bottom: 24px;
+    }
+    .plan-header-card h1 {
+      font-size: 22px;
+      line-height: 1.3;
+      margin-bottom: 10px;
+      color: #fff;
+    }
+    .plan-header-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--muted-foreground);
+    }
+    .plan-body-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 32px 24px;
+    }
+    @media (min-width: 768px) {
+      .plan-page-shell {
+        padding: 36px 24px 96px;
+      }
+      .plan-body-card {
+        padding: 44px 48px;
+      }
+      .plan-header-card h1 {
+        font-size: 26px;
+      }
+    }
+    .plan-body-card > h1:first-child {
+      display: none;
+    }
+    .plan-body-card h1, .plan-body-card h2, .plan-body-card h3, .plan-body-card h4 {
+      color: #fff;
+      margin-top: 2rem;
+      margin-bottom: 0.85rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      padding-bottom: 6px;
+    }
+    .plan-body-card h1:first-of-type {
+      margin-top: 0;
+    }
+    .plan-body-card p {
+      color: #cbd5e1;
+      font-size: 15px;
+      line-height: 1.7;
+      margin-bottom: 1.15rem;
+    }
+    .plan-body-card ul, .plan-body-card ol {
+      margin: 0.85rem 0 1.25rem 1.5rem;
+      color: #cbd5e1;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+    .plan-body-card li {
+      margin-bottom: 0.4rem;
+    }
+    .plan-body-card li.task-item {
+      list-style: none;
+      margin-left: -1.2rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+    }
+    .plan-body-card li.task-item input[type="checkbox"] {
+      margin-top: 0.35rem;
+    }
+    .plan-body-card pre.code-block {
+      background: #050811;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      font-size: 13.5px;
+      line-height: 1.6;
+      color: #e2e8f0;
+      margin: 1.25rem 0;
+    }
+    .plan-body-card code {
+      font-size: 13px;
+    }
+    pre.mermaid {
+      background: #050811;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem 1rem;
+      overflow-x: auto;
+      margin: 1.5rem 0;
+      display: flex;
+      justify-content: center;
+    }
+  </style>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+  </script>
+</head>
+<body class="app-shell">
+  <main class="plan-page-shell">
+    <div class="plan-top-nav">
+      <div class="plan-breadcrumbs">
+        <a href="./" class="plan-back-link">← Task Dashboard</a>
+        <span style="color: var(--border);">/</span>
+        <span class="tag">${project}</span>
+        <code>${specId}</code>
+      </div>
+      <div>
+        <a href="https://wa.me/447812754124?text=approve%20${specId}" class="btn btn-primary btn-sm" target="_blank">
+          Approve on WhatsApp →
+        </a>
+      </div>
+    </div>
+
+    <div class="plan-header-card">
+      <h1>${title}</h1>
+      <div class="plan-header-meta">
+        <span class="badge ${statusBadgeClass}">${status}</span>
+        <span>Dedicated Written Plan</span>
+        <span>·</span>
+        <code>plan.html</code>
+      </div>
+    </div>
+
+    <article class="plan-body-card card-content">
+      ${renderedContent}
+    </article>
+  </main>
+</body>
+</html>`;
 }
 
 function generateTaskDashboardHtml(meta) {
@@ -167,22 +393,28 @@ function generateTaskDashboardHtml(meta) {
   if (meta.status === 'VERIFIED' || meta.status === 'APPROVED') statusBadgeClass = 'badge-success';
   if (meta.status === 'DEPLOYED' || meta.status === 'COMPLETED') statusBadgeClass = 'badge-success';
 
-  const hasVisualPlan = fs.existsSync(path.join(REPORTS_DIR, meta.specId, 'visual-plan.html'));
-  const hasWrittenPlan = fs.existsSync(path.join(REPORTS_DIR, meta.specId, 'plan.html')) || fs.existsSync(path.join(REPORTS_DIR, meta.specId, 'plan.md'));
-  const hasSpec = fs.existsSync(path.join(REPORTS_DIR, meta.specId, 'spec.md'));
-  const hasSymbolDiff = fs.existsSync(path.join(REPORTS_DIR, meta.specId, 'symboldiff.html'));
+  const taskDir = path.join(REPORTS_DIR, meta.specId);
+  const planMdPath = path.join(taskDir, 'plan.md');
+  const planHtmlPath = path.join(taskDir, 'plan.html');
 
   let writtenPlanContent = '';
-  if (fs.existsSync(path.join(REPORTS_DIR, meta.specId, 'plan.md'))) {
-    const rawMarkdown = fs.readFileSync(path.join(REPORTS_DIR, meta.specId, 'plan.md'), 'utf-8');
+  if (fs.existsSync(planMdPath)) {
+    const rawMarkdown = fs.readFileSync(planMdPath, 'utf-8');
     writtenPlanContent = renderMarkdownToHtml(rawMarkdown);
-  } else if (fs.existsSync(path.join(REPORTS_DIR, meta.specId, 'plan.html'))) {
+    const dedicatedPlanHtml = generatePlanHtml(meta, rawMarkdown);
+    fs.writeFileSync(planHtmlPath, dedicatedPlanHtml, 'utf-8');
+  } else if (fs.existsSync(planHtmlPath)) {
     writtenPlanContent = `<iframe src="./plan.html" class="tab-iframe" title="Written Plan"></iframe>`;
   }
 
+  const hasVisualPlan = fs.existsSync(path.join(taskDir, 'visual-plan.html'));
+  const hasWrittenPlan = fs.existsSync(planHtmlPath) || fs.existsSync(planMdPath);
+  const hasSpec = fs.existsSync(path.join(taskDir, 'spec.md'));
+  const hasSymbolDiff = fs.existsSync(path.join(taskDir, 'symboldiff.html'));
+
   let specContent = '';
   if (hasSpec) {
-    const rawSpec = fs.readFileSync(path.join(REPORTS_DIR, meta.specId, 'spec.md'), 'utf-8');
+    const rawSpec = fs.readFileSync(path.join(taskDir, 'spec.md'), 'utf-8');
     specContent = renderMarkdownToHtml(rawSpec);
   }
 
@@ -195,9 +427,25 @@ function generateTaskDashboardHtml(meta) {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/_style/house-style.css">
+  <link rel="stylesheet" href="/_style/house-style.css?v=2">
   <script src="/_style/house-style.js" defer></script>
   <style>
+    :root {
+      --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-heading: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    html, body, p, div, span, li, a, button {
+      font-family: var(--font-sans) !important;
+      image-rendering: auto !important;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      font-family: var(--font-heading) !important;
+      font-weight: 700;
+    }
+    code, pre, pre code {
+      font-family: var(--font-mono) !important;
+    }
     .task-nav-back {
       font-size: 13px;
       margin-bottom: 16px;
@@ -235,7 +483,21 @@ function generateTaskDashboardHtml(meta) {
       border-radius: var(--radius);
       font-size: 13px;
     }
+    pre.mermaid {
+      background: #050811;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem 1rem;
+      overflow-x: auto;
+      margin: 1.5rem 0;
+      display: flex;
+      justify-content: center;
+    }
   </style>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+  </script>
 </head>
 <body class="app-shell">
 
@@ -302,7 +564,7 @@ function generateTaskDashboardHtml(meta) {
                 ${hasWrittenPlan ? `
                   <div class="deliverable-item">
                     <span>Written Technical Plan</span>
-                    <a href="javascript:void(0)" onclick="document.querySelector('[data-tab-target=\\'tab-written-plan\\']')?.click()">View plan →</a>
+                    <a href="./plan.html" target="_blank">plan.html →</a>
                   </div>` : ''}
 
                 ${hasSymbolDiff ? `
@@ -339,8 +601,9 @@ function generateTaskDashboardHtml(meta) {
       ${hasWrittenPlan ? `
       <div class="tabs-content" data-tab-content="tab-written-plan" id="tab-written-plan" style="margin-top: 16px;">
         <div class="card">
-          <div class="card-header">
+          <div class="card-header" style="display: flex; flex-direction: row; justify-content: space-between; align-items: center;">
             <h3 class="card-title">Written Implementation Plan</h3>
+            <a href="./plan.html" target="_blank" class="btn btn-secondary btn-sm">Open Dedicated Page ↗</a>
           </div>
           <div class="card-content">
             ${writtenPlanContent}
@@ -1207,7 +1470,11 @@ function updateIndexHtml() {
       else if (d.name === 'lift' || d.name === 'timer-factory' || d.name === 'zach') meta.project = 'zach';
 
       if (fs.existsSync(metaPath)) {
-        try { meta = { ...meta, ...JSON.parse(fs.readFileSync(metaPath, 'utf-8')) }; } catch {}
+        try {
+          meta = { ...meta, ...JSON.parse(fs.readFileSync(metaPath, 'utf-8')) };
+          const dashboardHtml = generateTaskDashboardHtml(meta);
+          fs.writeFileSync(indexPath, dashboardHtml, 'utf-8');
+        } catch {}
       } else {
         const content = fs.readFileSync(indexPath, 'utf-8');
         const m = content.match(/<title>([^<]+)<\/title>/i);
@@ -1669,7 +1936,7 @@ function updateIndexHtml() {
   fs.writeFileSync(path.join(REPORTS_DIR, 'manifest.json'), manifestStr, 'utf-8');
 
   const swCode = `// Service Worker for Homo Stellaris Portal PWA
-const CACHE_NAME = 'portal-v1';
+const CACHE_NAME = 'portal-v3';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -1700,7 +1967,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/zach/')) return;
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/zach/') || url.pathname.startsWith('/_style/')) return;
 
   event.respondWith(
     fetch(event.request)

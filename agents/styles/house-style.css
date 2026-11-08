@@ -550,6 +550,17 @@ pre, pre.code-block {
   margin: 0.875rem 0;
 }
 
+pre.mermaid {
+  background: #050811;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem 1rem;
+  overflow-x: auto;
+  margin: 1.25rem 0;
+  display: flex;
+  justify-content: center;
+}
+
 pre code, pre.code-block code {
   background: transparent;
   padding: 0;
