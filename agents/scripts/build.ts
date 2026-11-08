@@ -1242,7 +1242,7 @@ export class BuildOrchestrator {
       const commitMessage =
         `✨ implement ${this.spec.title.toLowerCase()}\n\n` +
         `Co-authored-by: Antigravity <antigravity@google.com>`;
-      runCommand(["git", "commit", "-m", commitMessage], { cwd: worktreeDir, capture: false });
+      runCommand(["git", "commit", "--no-gpg-sign", "-m", commitMessage], { cwd: worktreeDir, capture: false });
     }
 
     console.log(`🔀 Merging ${branchName} into ${defaultBranch} and pushing directly to origin...`);
@@ -1329,7 +1329,7 @@ export class BuildOrchestrator {
     const commitMessage =
       `✨ implement ${this.spec.title.toLowerCase()}\n\n` +
       `Co-authored-by: Antigravity <antigravity@google.com>`;
-    runCommand(["git", "commit", "-m", commitMessage], { cwd: this.state.worktree_dir, capture: false });
+    runCommand(["git", "commit", "--no-gpg-sign", "-m", commitMessage], { cwd: this.state.worktree_dir, capture: false });
 
     const pushRes = runCommand(
       ["git", "push", "-u", "origin", this.state.branch_name],
@@ -1404,6 +1404,7 @@ export class BuildOrchestrator {
         [
           "git",
           "commit",
+          "--no-gpg-sign",
           "-m",
           "🐛 fix repository test suite failure\n\nCo-authored-by: Antigravity <antigravity@google.com>",
         ],
@@ -1433,9 +1434,7 @@ export class BuildOrchestrator {
     this.state.port = assignedPort;
     this.state.dev_url = tailscaleUrl;
     this.state.stage = "AWAIT_HUMAN_REVIEW";
-    if (!this.state.human_review_requested_at) {
-      this.state.human_review_requested_at = new Date().toISOString();
-    }
+    this.state.human_review_requested_at = new Date().toISOString();
     this.publishTaskDashboard("HUMAN REVIEW");
     this.saveState(this.state);
 
@@ -1508,11 +1507,17 @@ export class BuildOrchestrator {
         [
           "git",
           "commit",
+          "--no-gpg-sign",
           "-m",
           "♻️ address human review feedback\n\nCo-authored-by: Antigravity <antigravity@google.com>",
         ],
         { cwd: this.state.worktree_dir, capture: false }
       );
+    }
+
+    if (this.state) {
+      this.state.human_review_requested_at = new Date().toISOString();
+      this.saveState(this.state);
     }
 
     console.log("✅ Human feedback addressed. Returning to test and review cycle.");
@@ -1557,6 +1562,7 @@ export class BuildOrchestrator {
         [
           "git",
           "commit",
+          "--no-gpg-sign",
           "-m",
           "⚡ harden and simplify implementation\n\nCo-authored-by: Antigravity <antigravity@google.com>",
         ],
