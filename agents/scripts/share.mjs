@@ -164,12 +164,12 @@ function renderMarkdownToHtml(markdownText) {
   return html;
 }
 
-function generatePlanHtml(meta, planMarkdown) {
+function generateDocumentPageHtml(meta, docConfig, markdownText) {
   const specId = escapeHtml(meta.specId);
   const title = escapeHtml(meta.title || meta.specId);
   const project = escapeHtml(meta.project || 'starfocus');
   const status = escapeHtml(meta.status || 'PLAN REVIEW');
-  const renderedContent = renderMarkdownToHtml(planMarkdown);
+  const renderedContent = renderMarkdownToHtml(markdownText);
 
   let statusBadgeClass = 'badge-default';
   if (meta.status === 'IN_PROGRESS' || meta.status === 'IMPLEMENTING') statusBadgeClass = 'badge-warning';
@@ -182,7 +182,7 @@ function generatePlanHtml(meta, planMarkdown) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Written Plan — ${title}</title>
+  <title>${escapeHtml(docConfig.titlePrefix)} — ${title}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -361,9 +361,9 @@ function generatePlanHtml(meta, planMarkdown) {
       <h1>${title}</h1>
       <div class="plan-header-meta">
         <span class="badge ${statusBadgeClass}">${status}</span>
-        <span>Dedicated Written Plan</span>
+        <span>${escapeHtml(docConfig.badgeLabel)}</span>
         <span>·</span>
-        <code>plan.html</code>
+        <code>${escapeHtml(docConfig.fileName)}</code>
       </div>
     </div>
 
@@ -373,6 +373,22 @@ function generatePlanHtml(meta, planMarkdown) {
   </main>
 </body>
 </html>`;
+}
+
+function generatePlanHtml(meta, planMarkdown) {
+  return generateDocumentPageHtml(meta, {
+    titlePrefix: 'Written Plan',
+    badgeLabel: 'Dedicated Written Plan',
+    fileName: 'plan.html',
+  }, planMarkdown);
+}
+
+function generateSpecHtml(meta, specMarkdown) {
+  return generateDocumentPageHtml(meta, {
+    titlePrefix: 'Specification',
+    badgeLabel: 'Specification Requirements',
+    fileName: 'spec.html',
+  }, specMarkdown);
 }
 
 function generateTaskDashboardHtml(meta) {
@@ -396,34 +412,32 @@ function generateTaskDashboardHtml(meta) {
   const taskDir = path.join(REPORTS_DIR, meta.specId);
   const planMdPath = path.join(taskDir, 'plan.md');
   const planHtmlPath = path.join(taskDir, 'plan.html');
+  const specMdPath = path.join(taskDir, 'spec.md');
+  const specHtmlPath = path.join(taskDir, 'spec.html');
 
-  let writtenPlanContent = '';
   if (fs.existsSync(planMdPath)) {
     const rawMarkdown = fs.readFileSync(planMdPath, 'utf-8');
-    writtenPlanContent = renderMarkdownToHtml(rawMarkdown);
     const dedicatedPlanHtml = generatePlanHtml(meta, rawMarkdown);
     fs.writeFileSync(planHtmlPath, dedicatedPlanHtml, 'utf-8');
-  } else if (fs.existsSync(planHtmlPath)) {
-    writtenPlanContent = `<iframe src="./plan.html" class="tab-iframe" title="Written Plan"></iframe>`;
+  }
+
+  if (fs.existsSync(specMdPath)) {
+    const rawSpec = fs.readFileSync(specMdPath, 'utf-8');
+    const dedicatedSpecHtml = generateSpecHtml(meta, rawSpec);
+    fs.writeFileSync(specHtmlPath, dedicatedSpecHtml, 'utf-8');
   }
 
   const hasVisualPlan = fs.existsSync(path.join(taskDir, 'visual-plan.html'));
   const hasWrittenPlan = fs.existsSync(planHtmlPath) || fs.existsSync(planMdPath);
-  const hasSpec = fs.existsSync(path.join(taskDir, 'spec.md'));
+  const hasSpec = fs.existsSync(specHtmlPath) || fs.existsSync(specMdPath);
   const hasSymbolDiff = fs.existsSync(path.join(taskDir, 'symboldiff.html'));
-
-  let specContent = '';
-  if (hasSpec) {
-    const rawSpec = fs.readFileSync(path.join(taskDir, 'spec.md'), 'utf-8');
-    specContent = renderMarkdownToHtml(rawSpec);
-  }
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>${title} — Task</title>
+  <title>${title} — Task Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -450,14 +464,20 @@ function generateTaskDashboardHtml(meta) {
       font-size: 13px;
       margin-bottom: 16px;
       display: inline-block;
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .task-nav-back:hover {
+      text-decoration: underline;
     }
     .task-header {
-      margin-bottom: 20px;
+      margin-bottom: 24px;
     }
     .task-header h1 {
-      font-size: 20px;
+      font-size: 24px;
       font-weight: 700;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
     }
     .task-meta {
       display: flex;
@@ -467,41 +487,72 @@ function generateTaskDashboardHtml(meta) {
       color: var(--muted-foreground);
       flex-wrap: wrap;
     }
-    .deliverable-list {
+    .deliverable-card-list {
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      margin-top: 12px;
+      gap: 12px;
+      margin-top: 8px;
     }
-    .deliverable-item {
+    .deliverable-card {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 12px;
+      padding: 16px 20px;
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: var(--radius);
-      font-size: 13px;
+      border-radius: var(--radius-lg);
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.15s ease;
+      gap: 16px;
     }
-    pre.mermaid {
-      background: #050811;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1.5rem 1rem;
-      overflow-x: auto;
-      margin: 1.5rem 0;
+    .deliverable-card:hover {
+      border-color: var(--primary);
+      background: var(--card-hover);
+      transform: translateY(-1px);
+    }
+    .deliverable-card-info {
       display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .deliverable-card-icon {
+      font-size: 22px;
+      display: flex;
+      align-items: center;
       justify-content: center;
+      width: 42px;
+      height: 42px;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .deliverable-card-text h4 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 3px;
+    }
+    .deliverable-card-text p {
+      font-size: 12.5px;
+      color: var(--muted-foreground);
+      margin: 0;
+    }
+    .deliverable-card-action {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--primary);
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 4px;
     }
   </style>
-  <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
-  </script>
 </head>
 <body class="app-shell">
 
-  <main class="container" style="max-width: 800px; padding-top: 24px;">
+  <main class="container" style="max-width: 820px; padding-top: 32px; padding-bottom: 64px;">
 
     <a href="/" class="task-nav-back">← Portal</a>
 
@@ -515,126 +566,98 @@ function generateTaskDashboardHtml(meta) {
       </div>
     </div>
 
-    <div data-tabs class="tabs-wrapper">
-      <div class="tabs-list">
-        <button class="tabs-trigger active" data-tab-target="tab-overview">Overview</button>
-        ${hasVisualPlan ? `<button class="tabs-trigger" data-tab-target="tab-visual-plan">Visual Plan</button>` : ''}
-        ${hasWrittenPlan ? `<button class="tabs-trigger" data-tab-target="tab-written-plan">Written Plan</button>` : ''}
-        ${hasSymbolDiff || prUrl ? `<button class="tabs-trigger" data-tab-target="tab-pr">PR & Diff</button>` : ''}
-        ${hasSpec ? `<button class="tabs-trigger" data-tab-target="tab-spec">Spec</button>` : ''}
-      </div>
-
-      <!-- OVERVIEW TAB -->
-      <div class="tabs-content active" data-tab-content="tab-overview" id="tab-overview" style="margin-top: 16px;">
-        <div class="grid-1">
-          
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title">Task Details</h3>
-            </div>
-            <div class="card-content">
-              <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
-                <div><strong>Spec:</strong> <code>${specId}</code></div>
-                <div><strong>Repository:</strong> <code>~/code/homostellaris/${project}</code></div>
-                <div><strong>Worktree:</strong> <code>.worktrees/${specId}</code></div>
-                <div><strong>Branch:</strong> <code>${specId}</code></div>
-              </div>
-
-              <div style="display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap;">
-                <a href="https://wa.me/447812754124?text=approve%20${specId}" class="btn btn-primary btn-sm" target="_blank">
-                  Approve on WhatsApp →
-                </a>
-                ${prUrl ? `<a href="${prUrl}" class="btn btn-secondary btn-sm" target="_blank">View GitHub PR #${prNumber || ''} →</a>` : ''}
-              </div>
-            </div>
+    <div class="grid-1" style="gap: 20px;">
+      
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Task Overview</h3>
+        </div>
+        <div class="card-content">
+          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+            <div><strong>Spec:</strong> <code>${specId}</code></div>
+            <div><strong>Repository:</strong> <code>~/code/homostellaris/${project}</code></div>
+            <div><strong>Worktree:</strong> <code>.worktrees/${specId}</code></div>
+            <div><strong>Branch:</strong> <code>${specId}</code></div>
           </div>
 
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title">Deliverables in Folder</h3>
-            </div>
-            <div class="card-content">
-              <div class="deliverable-list">
-                ${hasVisualPlan ? `
-                  <div class="deliverable-item">
-                    <span>Visual Plan</span>
-                    <a href="./visual-plan.html" target="_blank">visual-plan.html →</a>
-                  </div>` : ''}
-
-                ${hasWrittenPlan ? `
-                  <div class="deliverable-item">
-                    <span>Written Technical Plan</span>
-                    <a href="./plan.html" target="_blank">plan.html →</a>
-                  </div>` : ''}
-
-                ${hasSymbolDiff ? `
-                  <div class="deliverable-item">
-                    <span>SymbolDiff Review</span>
-                    <a href="./symboldiff.html" target="_blank">symboldiff.html →</a>
-                  </div>` : ''}
-
-                ${hasSpec ? `
-                  <div class="deliverable-item">
-                    <span>Obsidian Spec</span>
-                    <a href="javascript:void(0)" onclick="document.querySelector('[data-tab-target=\\'tab-spec\\']')?.click()">View spec →</a>
-                  </div>` : ''}
-              </div>
-            </div>
+          <div style="display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap;">
+            <a href="https://wa.me/447812754124?text=approve%20${specId}" class="btn btn-primary btn-sm" target="_blank">
+              💬 Approve on WhatsApp →
+            </a>
+            ${prUrl ? `<a href="${prUrl}" class="btn btn-secondary btn-sm" target="_blank">View GitHub PR #${prNumber || ''} ↗</a>` : ''}
           </div>
-
         </div>
       </div>
 
-      <!-- VISUAL PLAN TAB -->
-      ${hasVisualPlan ? `
-      <div class="tabs-content" data-tab-content="tab-visual-plan" id="tab-visual-plan" style="margin-top: 16px;">
-        <div class="card" style="padding: 12px;">
-          <div class="card-header-row" style="margin-bottom: 8px;">
-            <h3 class="card-title">Visual Plan</h3>
-            <a href="./visual-plan.html" target="_blank" style="font-size: 12px;">Open full page →</a>
-          </div>
-          <iframe src="./visual-plan.html" class="tab-iframe" title="Visual Plan"></iframe>
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Dedicated Artifact Pages</h3>
+          <p class="card-description">Individual pages for review, planning, and inspection</p>
         </div>
-      </div>` : ''}
+        <div class="card-content">
+          <div class="deliverable-card-list">
+            ${hasWrittenPlan ? `
+            <a href="./plan.html" class="deliverable-card">
+              <div class="deliverable-card-info">
+                <div class="deliverable-card-icon">📄</div>
+                <div class="deliverable-card-text">
+                  <h4>Written Implementation Plan</h4>
+                  <p>Full architectural vision, technical requirements, and step-by-step implementation plan</p>
+                </div>
+              </div>
+              <div class="deliverable-card-action">Open Plan →</div>
+            </a>` : ''}
 
-      <!-- WRITTEN PLAN TAB -->
-      ${hasWrittenPlan ? `
-      <div class="tabs-content" data-tab-content="tab-written-plan" id="tab-written-plan" style="margin-top: 16px;">
-        <div class="card">
-          <div class="card-header" style="display: flex; flex-direction: row; justify-content: space-between; align-items: center;">
-            <h3 class="card-title">Written Implementation Plan</h3>
-            <a href="./plan.html" target="_blank" class="btn btn-secondary btn-sm">Open Dedicated Page ↗</a>
-          </div>
-          <div class="card-content">
-            ${writtenPlanContent}
-          </div>
-        </div>
-      </div>` : ''}
+            ${hasVisualPlan ? `
+            <a href="./visual-plan.html" class="deliverable-card">
+              <div class="deliverable-card-info">
+                <div class="deliverable-card-icon">🎨</div>
+                <div class="deliverable-card-text">
+                  <h4>Visual Plan &amp; Prototype</h4>
+                  <p>Interactive wireframes, layout prototypes, and asset specifications</p>
+                </div>
+              </div>
+              <div class="deliverable-card-action">Open Visual Plan →</div>
+            </a>` : ''}
 
-      <!-- PR & DIFF TAB -->
-      ${hasSymbolDiff || prUrl ? `
-      <div class="tabs-content" data-tab-content="tab-pr" id="tab-pr" style="margin-top: 16px;">
-        <div class="card" style="padding: 12px;">
-          <div class="card-header-row" style="margin-bottom: 8px;">
-            <h3 class="card-title">Pull Request & SymbolDiff</h3>
-            ${prUrl ? `<a href="${prUrl}" target="_blank" style="font-size: 12px;">Open PR #${prNumber || ''} on GitHub →</a>` : ''}
-          </div>
-          ${hasSymbolDiff ? `<iframe src="./symboldiff.html" class="tab-iframe" title="Symbol Diff"></iframe>` : `<p style="padding: 1rem;">PR URL: <a href="${prUrl}" target="_blank">${prUrl}</a></p>`}
-        </div>
-      </div>` : ''}
+            ${hasSpec ? `
+            <a href="./spec.html" class="deliverable-card">
+              <div class="deliverable-card-info">
+                <div class="deliverable-card-icon">📋</div>
+                <div class="deliverable-card-text">
+                  <h4>Specification Requirements</h4>
+                  <p>Original Obsidian user specification, points, roles, and acceptance criteria</p>
+                </div>
+              </div>
+              <div class="deliverable-card-action">Open Spec →</div>
+            </a>` : ''}
 
-      <!-- SPEC TAB -->
-      ${hasSpec ? `
-      <div class="tabs-content" data-tab-content="tab-spec" id="tab-spec" style="margin-top: 16px;">
-        <div class="card">
-          <div class="card-header">
-            <h3 class="card-title">Spec Source</h3>
-          </div>
-          <div class="card-content">
-            ${specContent}
+            ${hasSymbolDiff ? `
+            <a href="./symboldiff.html" class="deliverable-card">
+              <div class="deliverable-card-info">
+                <div class="deliverable-card-icon">🔀</div>
+                <div class="deliverable-card-text">
+                  <h4>SymbolDiff Code Review</h4>
+                  <p>Interactive symbol-level diff visualizer and changes</p>
+                </div>
+              </div>
+              <div class="deliverable-card-action">Inspect Diff →</div>
+            </a>` : ''}
+
+            ${prUrl ? `
+            <a href="${prUrl}" class="deliverable-card" target="_blank">
+              <div class="deliverable-card-info">
+                <div class="deliverable-card-icon">🐙</div>
+                <div class="deliverable-card-text">
+                  <h4>GitHub Pull Request #${prNumber || ''}</h4>
+                  <p>Open PR on GitHub with automated tests and CI pipeline</p>
+                </div>
+              </div>
+              <div class="deliverable-card-action">View PR ↗</div>
+            </a>` : ''}
           </div>
         </div>
-      </div>` : ''}
+      </div>
 
     </div>
 
