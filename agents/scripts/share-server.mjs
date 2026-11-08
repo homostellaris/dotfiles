@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
+import net from 'node:net';
 
 const PORT = 8787;
 const HOST = '127.0.0.1';
@@ -61,9 +62,155 @@ const MIME_TYPES = {
   '.webm': 'video/webm',
 };
 
-const server = http.createServer((req, res) => {
+function checkPortListening(port) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ port, host: '127.0.0.1', timeout: 300 });
+    socket.on('connect', () => { socket.destroy(); resolve(true); });
+    socket.on('error', () => { socket.destroy(); resolve(false); });
+    socket.on('timeout', () => { socket.destroy(); resolve(false); });
+  });
+}
+
+async function handleDevServersApi(req, res) {
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+  });
+
+  const result = {
+    starfocus: [],
+    banerry: [],
+    other: [],
+    timestamp: Date.now(),
+  };
+
+  try {
+    const psOut = execSync('ps -eo pid,command', { encoding: 'utf-8', timeout: 2000 });
+    const lines = psOut.split('\n');
+    const seen = new Set();
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || /grep|ps -eo/i.test(line)) continue;
+
+      const isDev = /next dev|bun dev|bun run dev|start-server\.js|convex dev|vite/i.test(line);
+      if (!isDev) continue;
+
+      const pidMatch = line.match(/^(\d+)\s+(.*)$/);
+      if (!pidMatch) continue;
+      const pid = parseInt(pidMatch[1], 10);
+      const cmd = pidMatch[2];
+
+      let project = 'other';
+      if (/starfocus/i.test(cmd)) project = 'starfocus';
+      else if (/banerry/i.test(cmd)) project = 'banerry';
+
+      let port = null;
+      const portMatch = cmd.match(/-p\s+(\d+)|--port\s+(\d+)/);
+      if (portMatch) {
+        port = parseInt(portMatch[1] || portMatch[2], 10);
+      } else if (project === 'starfocus') {
+        port = 6600;
+      } else if (project === 'banerry') {
+        port = 6700;
+      }
+
+      let worktree = 'main';
+      const wtMatch = cmd.match(/\.worktrees\/([^\/\s]+)/);
+      if (wtMatch) worktree = wtMatch[1];
+
+      // Try reading exact working directory from /proc/pid/cwd
+      try {
+        const cwdLink = fs.readlinkSync(`/proc/${pid}/cwd`);
+        const subMatch = cwdLink.match(/\.worktrees\/([^\/\s]+)/);
+        if (subMatch) worktree = subMatch[1];
+      } catch {}
+
+      const key = `${project}:${port}:${worktree}`;
+      if (port && !seen.has(key)) {
+        seen.add(key);
+        const isOpen = await checkPortListening(port);
+        const serverInfo = {
+          project,
+          port,
+          worktree,
+          pid,
+          command: cmd.slice(0, 100),
+          isOpen,
+          localUrl: `http://localhost:${port}`,
+          tailscaleUrl: `http://omarchy.tail29c7da.ts.net:${port}`,
+        };
+        if (project === 'starfocus') result.starfocus.push(serverInfo);
+        else if (project === 'banerry') result.banerry.push(serverInfo);
+        else result.other.push(serverInfo);
+      }
+    }
+
+    // Default port fallbacks check
+    const is6600 = await checkPortListening(6600);
+    if (is6600 && !result.starfocus.some(s => s.port === 6600)) {
+      result.starfocus.push({
+        project: 'starfocus',
+        port: 6600,
+        worktree: 'main',
+        isOpen: true,
+        localUrl: 'http://localhost:6600',
+        tailscaleUrl: 'http://omarchy.tail29c7da.ts.net:6600',
+      });
+    }
+    const is6603 = await checkPortListening(6603);
+    if (is6603 && !result.starfocus.some(s => s.port === 6603)) {
+      result.starfocus.push({
+        project: 'starfocus',
+        port: 6603,
+        worktree: 'legacy-6603',
+        isOpen: true,
+        localUrl: 'http://localhost:6603',
+        tailscaleUrl: 'http://omarchy.tail29c7da.ts.net:6603',
+      });
+    }
+    const is6700 = await checkPortListening(6700);
+    if (is6700 && !result.banerry.some(s => s.port === 6700)) {
+      result.banerry.push({
+        project: 'banerry',
+        port: 6700,
+        worktree: 'main',
+        isOpen: true,
+        localUrl: 'http://localhost:6700',
+        tailscaleUrl: 'http://omarchy.tail29c7da.ts.net:6700',
+      });
+    }
+  } catch (err) {
+    result.error = err.message;
+  }
+
+  res.end(JSON.stringify(result, null, 2));
+}
+
+const server = http.createServer(async (req, res) => {
   // Parse URL pathname
   let reqPath = decodeURIComponent(new URL(req.url, `http://${req.headers.host || 'localhost'}`).pathname);
+
+  if (reqPath === '/api/dev-servers') {
+    await handleDevServersApi(req, res);
+    return;
+  }
+
+  if (reqPath === '/assets/symboldiff-app.js' || reqPath === '/assets/symboldiff.js') {
+    const clientScriptPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../skills/symboldiff/scripts/symboldiff-client.js');
+    if (fs.existsSync(clientScriptPath)) {
+      res.writeHead(200, {
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      });
+      fs.createReadStream(clientScriptPath).pipe(res);
+      return;
+    }
+  }
 
   // Normalize path to prevent path traversal
   const safePath = path.normalize(reqPath).replace(/^(\.\.[\/\\])+/, '');
@@ -114,6 +261,19 @@ const server = http.createServer((req, res) => {
     headers['Expires'] = '0';
   } else {
     headers['Cache-Control'] = 'public, max-age=3600';
+  }
+
+  if (ext === '.html') {
+    let htmlContent = fs.readFileSync(filePath, 'utf-8');
+    if (htmlContent.includes('const diffData =') && htmlContent.includes('// Router Render Dispatcher')) {
+      htmlContent = htmlContent.replace(
+        /<script>[\s\S]*?const diffData = (\{[\s\S]*?\});[\s\S]*?<\/script>/,
+        '<script>window.__SYMBOLDIFF_DATA__ = $1; const diffData = window.__SYMBOLDIFF_DATA__;</script><script src="/assets/symboldiff-app.js"></script>'
+      );
+    }
+    res.writeHead(200, headers);
+    res.end(htmlContent);
+    return;
   }
 
   res.writeHead(200, headers);
