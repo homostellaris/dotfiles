@@ -323,4 +323,13 @@ Here is the specification details.
     const fallbackOrchestrator = new BuildOrchestrator("");
     expect(fallbackOrchestrator.getHerdrSessionName()).toBe("default");
   });
+
+  it("generates https Tailscale dev URL and http local dev URL", () => {
+    const developmentUrls = orchestrator.getDevUrls(6601);
+    expect(developmentUrls.localUrl).toBe("http://localhost:6601");
+    if (developmentUrls.tailscaleUrl !== developmentUrls.localUrl) {
+      expect(developmentUrls.tailscaleUrl.startsWith("https://")).toBe(true);
+      expect(developmentUrls.tailscaleUrl.endsWith(":6601")).toBe(true);
+    }
+  });
 });

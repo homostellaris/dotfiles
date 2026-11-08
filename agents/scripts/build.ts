@@ -924,26 +924,41 @@ export class BuildOrchestrator {
   }
 
   ensureDevServerRunning(worktreeDirectory: string, portNumber: number): void {
-    const portCheck = runCommand(["lsof", "-i", `:${portNumber}`], { capture: true });
+    const portCheck = runCommand(["lsof", "-i", `TCP@127.0.0.1:${portNumber}`], { capture: true });
     if (portCheck.status === 0 && portCheck.stdout.trim().length > 0) {
       console.log(`🔌 Dev server is already active on port ${portNumber}`);
-      return;
+    } else {
+      console.log(`🚀 Starting local dev server on port ${portNumber} in background...`);
+      const logsDirectory = path.join(STATE_DIRECTORY, "logs");
+      fs.mkdirSync(logsDirectory, { recursive: true });
+      const logPath = path.join(logsDirectory, `dev-${this.spec?.identifier}.log`);
+      const outputHandle = fs.openSync(logPath, "a");
+
+      const devArguments = ["run", "dev"];
+      if (fs.existsSync(path.join(worktreeDirectory, "package.json"))) {
+        try {
+          const packageJsonData = JSON.parse(fs.readFileSync(path.join(worktreeDirectory, "package.json"), "utf-8"));
+          if (packageJsonData.scripts?.dev?.includes("next")) {
+            devArguments.push("--", "-H", "127.0.0.1");
+          }
+        } catch {}
+      }
+
+      const childProcessInstance = child_process.spawn("bun", devArguments, {
+        cwd: worktreeDirectory,
+        detached: true,
+        stdio: ["ignore", outputHandle, outputHandle],
+        env: { ...process.env, PORT: String(portNumber), HOSTNAME: "127.0.0.1" },
+      });
+      childProcessInstance.unref();
+      console.log(`📄 Dev server logs: ${logPath}`);
     }
 
-    console.log(`🚀 Starting local dev server on port ${portNumber} in background...`);
-    const logsDirectory = path.join(STATE_DIRECTORY, "logs");
-    fs.mkdirSync(logsDirectory, { recursive: true });
-    const logPath = path.join(logsDirectory, `dev-${this.spec?.identifier}.log`);
-    const outputHandle = fs.openSync(logPath, "a");
-
-    const childProcessInstance = child_process.spawn("bun", ["run", "dev"], {
-      cwd: worktreeDirectory,
-      detached: true,
-      stdio: ["ignore", outputHandle, outputHandle],
-      env: { ...process.env, PORT: String(portNumber) },
-    });
-    childProcessInstance.unref();
-    console.log(`📄 Dev server logs: ${logPath}`);
+    try {
+      runCommand(["tailscale", "serve", `--https=${portNumber}`, "--bg", `http://127.0.0.1:${portNumber}`], {
+        capture: true,
+      });
+    } catch {}
   }
 
   getDevUrls(portNumber: number): { localUrl: string; tailscaleUrl: string } {
@@ -962,7 +977,7 @@ export class BuildOrchestrator {
       }
     } catch {}
 
-    const tailscaleUrl = tailscaleHostname ? `http://${tailscaleHostname}:${portNumber}` : localUrl;
+    const tailscaleUrl = tailscaleHostname ? `https://${tailscaleHostname}:${portNumber}` : localUrl;
     return { localUrl, tailscaleUrl };
   }
 
@@ -1263,6 +1278,12 @@ export class BuildOrchestrator {
 
     // 4. Cleanup worktree if isolated
     if (worktreeDir !== repoDir && fs.existsSync(worktreeDir)) {
+      const assignedPort = this.getWorktreePort(worktreeDir);
+      if (assignedPort) {
+        try {
+          runCommand(["tailscale", "serve", `--https=${assignedPort}`, "off"], { capture: true });
+        } catch {}
+      }
       console.log(`🧹 Cleaning up worktree at: ${worktreeDir}`);
       const worktreeHelper = findExecutable("worktree", [
         path.join(os.homedir(), ".local", "bin", "worktree"),
