@@ -48,6 +48,11 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);
@@ -57,7 +62,6 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
 }
 
 .app-shell {
@@ -535,6 +539,8 @@ code {
   font-size: 0.8125rem;
   color: var(--primary);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 pre, pre.code-block {
@@ -548,6 +554,9 @@ pre, pre.code-block {
   line-height: 1.55;
   color: #e2e8f0;
   margin: 0.875rem 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
 }
 
 pre.mermaid {
@@ -559,6 +568,14 @@ pre.mermaid {
   margin: 1.25rem 0;
   display: flex;
   justify-content: center;
+  max-width: 100%;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
+}
+
+pre.mermaid svg {
+  max-width: 100% !important;
+  height: auto !important;
 }
 
 pre code, pre.code-block code {
@@ -567,6 +584,9 @@ pre code, pre.code-block code {
   border: none;
   color: inherit;
   font-size: inherit;
+  word-break: normal;
+  overflow-wrap: normal;
+  white-space: pre;
 }
 
 .card-content h1, .card-content h2, .card-content h3, .card-content h4 {

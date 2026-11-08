@@ -181,7 +181,7 @@ function generateDocumentPageHtml(meta, docConfig, markdownText) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(docConfig.titlePrefix)} — ${title}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -193,6 +193,13 @@ function generateDocumentPageHtml(meta, docConfig, markdownText) {
       --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       --font-heading: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
+    }
+    html, body {
+      overflow-x: hidden;
+      max-width: 100vw;
+      width: 100%;
+      margin: 0;
+      padding: 0;
     }
     html, body, p, div, span, li, a, button {
       font-family: var(--font-sans) !important;
@@ -208,21 +215,44 @@ function generateDocumentPageHtml(meta, docConfig, markdownText) {
     .plan-page-shell {
       max-width: 880px;
       margin: 0 auto;
-      padding: 24px 16px 80px;
+      padding: 16px 14px 64px;
+      width: 100%;
+      box-sizing: border-box;
+      overflow-x: hidden;
     }
     .plan-top-nav {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
       flex-wrap: wrap;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    @media (max-width: 640px) {
+      .plan-top-nav {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+      }
+      .plan-top-nav-action .btn {
+        width: 100%;
+        justify-content: center;
+      }
     }
     .plan-breadcrumbs {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       font-size: 13px;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+    .plan-breadcrumbs code {
+      word-break: break-all;
+      overflow-wrap: anywhere;
+      max-width: 100%;
     }
     .plan-back-link {
       color: var(--primary);
@@ -239,38 +269,57 @@ function generateDocumentPageHtml(meta, docConfig, markdownText) {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
-      padding: 20px 24px;
-      margin-bottom: 24px;
+      padding: 16px;
+      margin-bottom: 20px;
+      width: 100%;
+      box-sizing: border-box;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .plan-header-card h1 {
-      font-size: 22px;
-      line-height: 1.3;
+      font-size: 1.25rem;
+      line-height: 1.35;
       margin-bottom: 10px;
       color: #fff;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .plan-header-meta {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       flex-wrap: wrap;
       font-size: 12px;
       color: var(--muted-foreground);
+    }
+    .plan-header-meta code {
+      word-break: break-all;
+      overflow-wrap: anywhere;
     }
     .plan-body-card {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
-      padding: 32px 24px;
+      padding: 20px 14px;
+      width: 100%;
+      box-sizing: border-box;
+      overflow-x: hidden;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     @media (min-width: 768px) {
       .plan-page-shell {
         padding: 36px 24px 96px;
       }
-      .plan-body-card {
-        padding: 44px 48px;
+      .plan-header-card {
+        padding: 20px 24px;
+        margin-bottom: 24px;
       }
       .plan-header-card h1 {
         font-size: 26px;
+      }
+      .plan-body-card {
+        padding: 44px 48px;
       }
     }
     .plan-body-card > h1:first-child {
@@ -282,6 +331,16 @@ function generateDocumentPageHtml(meta, docConfig, markdownText) {
       margin-bottom: 0.85rem;
       border-bottom: 1px solid rgba(255, 255, 255, 0.07);
       padding-bottom: 6px;
+      word-break: break-word;
+      overflow-wrap: break-word;
+    }
+    .plan-body-card h1 { font-size: 1.35rem; }
+    .plan-body-card h2 { font-size: 1.15rem; }
+    .plan-body-card h3 { font-size: 1.05rem; }
+    @media (min-width: 768px) {
+      .plan-body-card h1 { font-size: 1.6rem; }
+      .plan-body-card h2 { font-size: 1.3rem; }
+      .plan-body-card h3 { font-size: 1.15rem; }
     }
     .plan-body-card h1:first-of-type {
       margin-top: 0;
@@ -291,49 +350,71 @@ function generateDocumentPageHtml(meta, docConfig, markdownText) {
       font-size: 15px;
       line-height: 1.7;
       margin-bottom: 1.15rem;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .plan-body-card ul, .plan-body-card ol {
-      margin: 0.85rem 0 1.25rem 1.5rem;
+      margin: 0.85rem 0 1.25rem 1.2rem;
       color: #cbd5e1;
       font-size: 15px;
       line-height: 1.7;
+      padding-left: 0;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .plan-body-card li {
       margin-bottom: 0.4rem;
     }
     .plan-body-card li.task-item {
       list-style: none;
-      margin-left: -1.2rem;
+      margin-left: 0;
       display: flex;
       align-items: flex-start;
       gap: 0.6rem;
     }
     .plan-body-card li.task-item input[type="checkbox"] {
       margin-top: 0.35rem;
+      flex-shrink: 0;
     }
     .plan-body-card pre.code-block {
       background: #050811;
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 1rem 1.25rem;
+      padding: 0.875rem 1rem;
       overflow-x: auto;
-      font-size: 13.5px;
+      font-size: 12.5px;
       line-height: 1.6;
       color: #e2e8f0;
       margin: 1.25rem 0;
+      max-width: 100%;
+      box-sizing: border-box;
+      -webkit-overflow-scrolling: touch;
     }
     .plan-body-card code {
       font-size: 13px;
+      word-break: break-all;
+      overflow-wrap: anywhere;
+    }
+    .plan-body-card pre.code-block code {
+      word-break: normal;
+      white-space: pre;
     }
     pre.mermaid {
       background: #050811;
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 1.5rem 1rem;
+      padding: 1rem 0.5rem;
       overflow-x: auto;
       margin: 1.5rem 0;
       display: flex;
       justify-content: center;
+      max-width: 100%;
+      box-sizing: border-box;
+      -webkit-overflow-scrolling: touch;
+    }
+    pre.mermaid svg {
+      max-width: 100% !important;
+      height: auto !important;
     }
   </style>
   <script type="module">
@@ -350,7 +431,7 @@ function generateDocumentPageHtml(meta, docConfig, markdownText) {
         <span class="tag">${project}</span>
         <code>${specId}</code>
       </div>
-      <div>
+      <div class="plan-top-nav-action">
         <a href="https://wa.me/447812754124?text=approve%20${specId}" class="btn btn-primary btn-sm" target="_blank">
           Approve on WhatsApp →
         </a>
@@ -436,7 +517,7 @@ function generateTaskDashboardHtml(meta) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} — Task Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -449,6 +530,13 @@ function generateTaskDashboardHtml(meta) {
       --font-heading: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
     }
+    html, body {
+      overflow-x: hidden;
+      max-width: 100vw;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+    }
     html, body, p, div, span, li, a, button {
       font-family: var(--font-sans) !important;
       image-rendering: auto !important;
@@ -459,6 +547,19 @@ function generateTaskDashboardHtml(meta) {
     }
     code, pre, pre code {
       font-family: var(--font-mono) !important;
+    }
+    .task-page-shell {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 20px 14px 64px;
+      width: 100%;
+      box-sizing: border-box;
+      overflow-x: hidden;
+    }
+    @media (min-width: 768px) {
+      .task-page-shell {
+        padding: 32px 24px 64px;
+      }
     }
     .task-nav-back {
       font-size: 13px;
@@ -473,19 +574,45 @@ function generateTaskDashboardHtml(meta) {
     }
     .task-header {
       margin-bottom: 24px;
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
     .task-header h1 {
-      font-size: 24px;
+      font-size: 1.35rem;
       font-weight: 700;
       margin-bottom: 8px;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      line-height: 1.3;
+    }
+    @media (min-width: 768px) {
+      .task-header h1 {
+        font-size: 24px;
+      }
     }
     .task-meta {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       font-size: 12px;
       color: var(--muted-foreground);
       flex-wrap: wrap;
+    }
+    .task-meta code {
+      word-break: break-all;
+      overflow-wrap: anywhere;
+    }
+    .task-details-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 13px;
+      word-break: break-all;
+      overflow-wrap: anywhere;
+    }
+    .task-details-grid code {
+      word-break: break-all;
+      overflow-wrap: anywhere;
     }
     .deliverable-card-list {
       display: flex;
@@ -497,14 +624,15 @@ function generateTaskDashboardHtml(meta) {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 16px 20px;
+      padding: 16px 18px;
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
       text-decoration: none;
       color: inherit;
       transition: all 0.15s ease;
-      gap: 16px;
+      gap: 14px;
+      box-sizing: border-box;
     }
     .deliverable-card:hover {
       border-color: var(--primary);
@@ -515,6 +643,7 @@ function generateTaskDashboardHtml(meta) {
       display: flex;
       align-items: center;
       gap: 14px;
+      min-width: 0;
     }
     .deliverable-card-icon {
       font-size: 22px;
@@ -528,16 +657,22 @@ function generateTaskDashboardHtml(meta) {
       border: 1px solid var(--border);
       flex-shrink: 0;
     }
+    .deliverable-card-text {
+      min-width: 0;
+    }
     .deliverable-card-text h4 {
       font-size: 15px;
       font-weight: 600;
       color: #fff;
       margin-bottom: 3px;
+      word-break: break-word;
     }
     .deliverable-card-text p {
       font-size: 12.5px;
       color: var(--muted-foreground);
       margin: 0;
+      word-break: break-word;
+      line-height: 1.5;
     }
     .deliverable-card-action {
       font-size: 13px;
@@ -547,12 +682,28 @@ function generateTaskDashboardHtml(meta) {
       display: flex;
       align-items: center;
       gap: 4px;
+      flex-shrink: 0;
+    }
+    @media (max-width: 640px) {
+      .deliverable-card {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        padding: 14px 14px;
+      }
+      .deliverable-card-info {
+        width: 100%;
+      }
+      .deliverable-card-action {
+        align-self: flex-end;
+        padding-top: 2px;
+      }
     }
   </style>
 </head>
 <body class="app-shell">
 
-  <main class="container" style="max-width: 820px; padding-top: 32px; padding-bottom: 64px;">
+  <main class="task-page-shell">
 
     <a href="/" class="task-nav-back">← Portal</a>
 
@@ -573,7 +724,7 @@ function generateTaskDashboardHtml(meta) {
           <h3 class="card-title">Task Overview</h3>
         </div>
         <div class="card-content">
-          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+          <div class="task-details-grid">
             <div><strong>Spec:</strong> <code>${specId}</code></div>
             <div><strong>Repository:</strong> <code>~/code/homostellaris/${project}</code></div>
             <div><strong>Worktree:</strong> <code>.worktrees/${specId}</code></div>
