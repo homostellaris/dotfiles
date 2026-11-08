@@ -36,6 +36,12 @@ export const STAGE_MODELS = {
   verifier: "claude-opus-5-5-high",
 } as const;
 
+export const PROJECT_PORT_POOLS: Record<string, { main: number; start: number; end: number }> = {
+  starfocus: { main: 6600, start: 6601, end: 6625 },
+  banerry: { main: 6700, start: 6701, end: 6725 },
+  default: { main: 6800, start: 6801, end: 6825 },
+};
+
 function getTailscaleBaseUrl(): string {
   try {
     const statusJson = child_process.spawnSync("tailscale", ["status", "--json"], {
@@ -138,6 +144,7 @@ export class BuildOrchestrator {
   public dryRun: boolean;
   public inlinePrompt?: string;
   public approveFlag: boolean;
+  public statusOnly: boolean;
   public spec: SpecMetadata | null = null;
   public state: BuildState | null = null;
 
@@ -146,13 +153,15 @@ export class BuildOrchestrator {
     projectOverride?: string,
     dryRun: boolean = false,
     inlinePrompt?: string,
-    approveFlag: boolean = false
+    approveFlag: boolean = false,
+    statusOnly: boolean = false
   ) {
     this.specQuery = specQuery;
     this.projectOverride = projectOverride;
     this.dryRun = dryRun;
     this.inlinePrompt = inlinePrompt;
     this.approveFlag = approveFlag;
+    this.statusOnly = statusOnly;
   }
 
   async execute(): Promise<number> {
@@ -179,6 +188,11 @@ export class BuildOrchestrator {
 
     const determinedStage = this.determineExternalState();
     console.log(`🔍 Evaluated External State: ${determinedStage}`);
+
+    if (this.statusOnly) {
+      this.printStatus(determinedStage);
+      return 0;
+    }
 
     if (this.dryRun) {
       this.printDryRunSummary(determinedStage);
@@ -714,18 +728,33 @@ export class BuildOrchestrator {
       }
     }
 
+    const targetProject = this.spec?.targetProject || "starfocus";
     const registryPath = path.join(STATE_DIRECTORY, "ports.json");
+    const usedPorts = new Set<number>();
+
     if (fs.existsSync(registryPath)) {
       try {
         const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
-        const registryKey = `${this.spec?.targetProject}:${this.spec?.identifier}`;
+        const registryKey = `${targetProject}:${this.spec?.identifier}`;
         if (registry.assignments?.[registryKey]?.port) {
           return registry.assignments[registryKey].port;
+        }
+        for (const item of Object.values(registry.assignments as Record<string, any>)) {
+          if (item.project === targetProject && typeof item.port === "number") {
+            usedPorts.add(item.port);
+          }
         }
       } catch {}
     }
 
-    return 6605;
+    const pool = PROJECT_PORT_POOLS[targetProject] || PROJECT_PORT_POOLS.default;
+    for (let candidatePort = pool.start; candidatePort <= pool.end; candidatePort++) {
+      if (!usedPorts.has(candidatePort)) {
+        return candidatePort;
+      }
+    }
+
+    return pool.start;
   }
 
   ensureDevServerRunning(worktreeDirectory: string, portNumber: number): void {
@@ -1609,6 +1638,10 @@ export class BuildOrchestrator {
     console.log(`Target Project: ${this.spec?.targetProject}`);
     console.log(`Target Repo:    ${this.state?.repo_dir}`);
     console.log(`Worktree Path:  ${this.state?.worktree_dir}`);
+    const isWorktreeInit = this.state?.worktree_dir
+      ? this.isWorktreeInitialized(this.state.worktree_dir)
+      : false;
+    console.log(`Worktree State: ${isWorktreeInit ? "initialized" : "uninitialized"}`);
     console.log(`Feature Branch: ${this.state?.branch_name}`);
     if (this.state?.worktree_dir) {
       const assignedPort = this.getWorktreePort(this.state.worktree_dir);
@@ -1619,6 +1652,16 @@ export class BuildOrchestrator {
     }
     console.log(`Evaluated Next: ${stage}`);
     console.log("--------------------------\n");
+  }
+
+  printStatus(stage: string): void {
+    const isWorktreeInit = this.state?.worktree_dir
+      ? this.isWorktreeInitialized(this.state.worktree_dir)
+      : false;
+    const assignedPort = this.getWorktreePort(this.state?.worktree_dir);
+    console.log(`Worktree:       ${isWorktreeInit ? `initialized (port ${assignedPort})` : "uninitialized"}`);
+    console.log(`Stage:          ${stage}`);
+    console.log(`Dev Port:       ${assignedPort}`);
   }
 }
 
@@ -1636,12 +1679,38 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     allowPositionals: true,
   });
 
-  const inlinePrompt = positionals.length > 0 ? positionals.join(" ").trim() : undefined;
-  const specId = values["spec-id"];
+  const isStatusCommand = positionals.includes("status") || Boolean(values.status);
+  const remainingPositionals = positionals.filter((arg) => arg !== "status");
+
+  let specId = values["spec-id"];
+  let inlinePrompt: string | undefined;
+
+  if (!specId && remainingPositionals.length === 1 && !remainingPositionals[0].includes(" ")) {
+    specId = remainingPositionals[0];
+  } else if (remainingPositionals.length > 0) {
+    inlinePrompt = remainingPositionals.join(" ").trim();
+  }
+
+  if (isStatusCommand && !specId && !inlinePrompt) {
+    const currentDirectory = process.cwd();
+    if (currentDirectory.includes("/.worktrees/")) {
+      specId = path.basename(currentDirectory);
+    } else {
+      const branchRes = runCommand(["git", "rev-parse", "--abbrev-ref", "HEAD"], { cwd: currentDirectory, capture: true });
+      if (branchRes.status === 0 && branchRes.stdout.trim() && branchRes.stdout.trim() !== "master" && branchRes.stdout.trim() !== "main") {
+        specId = branchRes.stdout.trim();
+      }
+    }
+    if (!specId) {
+      console.log("uninitialized");
+      process.exit(0);
+    }
+  }
 
   if (values.help || (!inlinePrompt && !specId)) {
     console.log('Usage: build "<prompt>" [options]');
     console.log("       build --spec-id <id> [options]");
+    console.log("       build status");
     console.log("\nAgentic coding workflow build orchestrator powered by Antigravity and Herdr.");
     console.log("\nPositional arguments:");
     console.log("  prompt                Inline feature prompt to plan and build.");
@@ -1660,7 +1729,8 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     specId: specId || "",
     project: values.project,
     approve: Boolean(values.approve),
-    dryRun: Boolean(values["dry-run"] || values.status),
+    dryRun: Boolean(values["dry-run"] || isStatusCommand),
+    statusOnly: isStatusCommand,
   };
 }
 
@@ -1671,7 +1741,8 @@ async function main() {
     parsedArguments.project,
     parsedArguments.dryRun,
     parsedArguments.prompt,
-    parsedArguments.approve
+    parsedArguments.approve,
+    parsedArguments.statusOnly
   );
   const exitCode = await orchestrator.execute();
   process.exit(exitCode);

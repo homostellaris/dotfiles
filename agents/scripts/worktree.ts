@@ -21,9 +21,9 @@ interface PortsRegistry {
 }
 
 const PROJECT_PORT_POOLS: Record<string, { main: number; start: number; end: number }> = {
-  starfocus: { main: 6600, start: 6605, end: 6625 },
-  banerry: { main: 6700, start: 6705, end: 6725 },
-  default: { main: 6800, start: 6805, end: 6825 },
+  starfocus: { main: 6600, start: 6601, end: 6625 },
+  banerry: { main: 6700, start: 6701, end: 6725 },
+  default: { main: 6800, start: 6801, end: 6825 },
 };
 
 function runCommand(command: string[], options: { cwd?: string; capture?: boolean } = {}): { status: number; stdout: string; stderr: string } {
@@ -278,6 +278,59 @@ function ensurePort(): number {
   return 0;
 }
 
+function showWorktreeStatus(targetBranch?: string): number {
+  const repositoryRoot = getRepositoryRoot();
+  if (!repositoryRoot) {
+    console.error("❌ Error: Must be inside a git repository.");
+    return 1;
+  }
+
+  const project = detectProject(repositoryRoot);
+  const currentBranchResult = runCommand(["git", "rev-parse", "--abbrev-ref", "HEAD"], { cwd: repositoryRoot });
+  const currentBranch = currentBranchResult.status === 0 ? currentBranchResult.stdout.trim() : null;
+  const branch = targetBranch || (currentBranch !== "master" && currentBranch !== "main" ? currentBranch : null);
+
+  if (!branch) {
+    console.log("uninitialized");
+    return 0;
+  }
+
+  const worktreeDirectory = path.join(repositoryRoot, ".worktrees", branch);
+  const isInsideWorktreeDirectory = process.cwd().startsWith(path.join(repositoryRoot, ".worktrees"));
+
+  if (!fs.existsSync(worktreeDirectory) && !isInsideWorktreeDirectory) {
+    console.log("uninitialized");
+    return 0;
+  }
+
+  const effectiveDirectory = fs.existsSync(worktreeDirectory) ? worktreeDirectory : process.cwd();
+  let assignedPort: string | undefined;
+
+  const environmentLocalPath = path.join(effectiveDirectory, ".env.local");
+  if (fs.existsSync(environmentLocalPath)) {
+    const environmentContent = fs.readFileSync(environmentLocalPath, "utf-8");
+    const portMatch = environmentContent.match(/^PORT=(\d+)/m);
+    if (portMatch) {
+      assignedPort = portMatch[1];
+    }
+  }
+
+  if (!assignedPort) {
+    const registry = loadRegistry();
+    const assignmentKey = `${project}:${branch}`;
+    if (registry.assignments[assignmentKey]) {
+      assignedPort = String(registry.assignments[assignmentKey].port);
+    }
+  }
+
+  if (assignedPort) {
+    console.log(`initialized (port ${assignedPort})`);
+  } else {
+    console.log("initialized");
+  }
+  return 0;
+}
+
 const action = process.argv[2];
 const argumentOne = process.argv[3];
 const argumentTwo = process.argv[4];
@@ -300,6 +353,10 @@ switch (action) {
     process.exit(removeWorktree(argumentOne));
     break;
 
+  case "status":
+    process.exit(showWorktreeStatus(argumentOne));
+    break;
+
   case "list":
   case "ls":
     process.exit(listWorktrees());
@@ -310,10 +367,11 @@ switch (action) {
     break;
 
   default:
-    console.log("Usage: worktree <add|remove|list|ensure-port>");
+    console.log("Usage: worktree <add|remove|list|status|ensure-port>");
     console.log("  worktree add <branch> [base-commit]  Create worktree with assigned port");
     console.log("  worktree remove <branch>             Remove worktree and release port");
     console.log("  worktree list                        List registered worktree ports");
+    console.log("  worktree status [branch]             Report worktree status (e.g. uninitialized)");
     console.log("  worktree ensure-port                 Ensure current worktree has PORT in .env.local");
     process.exit(0);
 }

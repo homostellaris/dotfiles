@@ -247,4 +247,26 @@ Here is the specification details.
 
     expect(feedbackOrchestrator.determineExternalState()).toBe("RESOLVE_FEEDBACK");
   });
+
+  it("predicts port 6601 for uninitialized starfocus worktree when pool is clear", () => {
+    const starfocusOrchestrator = new BuildOrchestrator("canvas-section_y2vtpcom");
+    starfocusOrchestrator.spec = {
+      identifier: "canvas-section_y2vtpcom",
+      title: "Canvas Section",
+      filePath: "/fake/path.md",
+      content: "",
+      project: "starfocus",
+      metadata: {},
+      targetProject: "starfocus",
+    };
+    const predictedPort = starfocusOrchestrator.getWorktreePort("/fake/uninitialized/worktree");
+    expect(predictedPort).toBe(6601);
+  });
+
+  it("parses status command positionally and flags statusOnly", () => {
+    const parsed = parseArguments(["canvas-section_y2vtpcom", "status"]);
+    expect(parsed.specId).toBe("canvas-section_y2vtpcom");
+    expect(parsed.statusOnly).toBe(true);
+    expect(parsed.dryRun).toBe(true);
+  });
 });
