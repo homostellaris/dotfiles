@@ -145,6 +145,7 @@ export class BuildOrchestrator {
   public inlinePrompt?: string;
   public approveFlag: boolean;
   public statusOnly: boolean;
+  public lockPath?: string;
   public spec: SpecMetadata | null = null;
   public state: BuildState | null = null;
 
@@ -186,34 +187,46 @@ export class BuildOrchestrator {
     console.log(`🚀 Starting build orchestration for: ${this.spec.title} (${this.spec.identifier})`);
     console.log(`📁 Target Project: ${this.spec.targetProject} -> ${this.state.repo_dir}`);
 
-    while (true) {
+    if (this.statusOnly) {
       const determinedStage = this.determineExternalState();
       console.log(`🔍 Evaluated External State: ${determinedStage}`);
+      this.printStatus(determinedStage);
+      return 0;
+    }
 
-      if (this.statusOnly) {
-        this.printStatus(determinedStage);
-        return 0;
-      }
+    if (this.dryRun) {
+      const determinedStage = this.determineExternalState();
+      console.log(`🔍 Evaluated External State: ${determinedStage}`);
+      this.printDryRunSummary(determinedStage);
+      return 0;
+    }
 
-      if (this.dryRun) {
-        this.printDryRunSummary(determinedStage);
-        return 0;
-      }
+    if (!this.acquireLock()) {
+      return 0;
+    }
 
-      const exitCode = await this.advanceLifecycle(determinedStage);
-      if (exitCode !== 0) {
-        return exitCode;
-      }
+    try {
+      while (true) {
+        const determinedStage = this.determineExternalState();
+        console.log(`🔍 Evaluated External State: ${determinedStage}`);
 
-      if (
-        determinedStage === "AWAIT_PLAN_APPROVAL" ||
-        determinedStage === "AWAIT_HUMAN_REVIEW" ||
-        determinedStage === "AWAIT_PR_MERGE" ||
-        determinedStage === "AWAIT_CI_CHECKS" ||
-        determinedStage === "COMPLETED"
-      ) {
-        return 0;
+        const exitCode = await this.advanceLifecycle(determinedStage);
+        if (exitCode !== 0) {
+          return exitCode;
+        }
+
+        if (
+          determinedStage === "AWAIT_PLAN_APPROVAL" ||
+          determinedStage === "AWAIT_HUMAN_REVIEW" ||
+          determinedStage === "AWAIT_PR_MERGE" ||
+          determinedStage === "AWAIT_CI_CHECKS" ||
+          determinedStage === "COMPLETED"
+        ) {
+          return 0;
+        }
       }
+    } finally {
+      this.releaseLock();
     }
   }
 
@@ -413,6 +426,69 @@ export class BuildOrchestrator {
     }
     const stateFile = path.join(STATE_DIRECTORY, `${state.spec_id}.json`);
     fs.writeFileSync(stateFile, JSON.stringify(state, null, 2), "utf-8");
+  }
+
+  acquireLock(): boolean {
+    if (!this.spec || this.dryRun || this.statusOnly) return true;
+
+    const lockPath = path.join(STATE_DIRECTORY, `${this.spec.identifier}.lock`);
+    if (fs.existsSync(lockPath)) {
+      try {
+        const rawContent = fs.readFileSync(lockPath, "utf-8").trim();
+        const parsedLock = JSON.parse(rawContent);
+        const existingPid = parsedLock.pid;
+        if (existingPid && typeof existingPid === "number") {
+          try {
+            process.kill(existingPid, 0);
+            console.log(`⚠️ An active build process for '${this.spec.identifier}' is already running (PID: ${existingPid}).`);
+            console.log(`👉 Attach to Herdr session: herdr session attach default`);
+            return false;
+          } catch {
+            // Stale lock from terminated process
+          }
+        }
+      } catch {}
+    }
+
+    try {
+      fs.mkdirSync(STATE_DIRECTORY, { recursive: true });
+      fs.writeFileSync(
+        lockPath,
+        JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }),
+        "utf-8"
+      );
+      this.lockPath = lockPath;
+
+      const cleanup = () => {
+        try {
+          if (this.lockPath && fs.existsSync(this.lockPath)) {
+            fs.unlinkSync(this.lockPath);
+          }
+        } catch {}
+      };
+
+      process.on("exit", cleanup);
+      process.on("SIGINT", () => {
+        cleanup();
+        process.exit(130);
+      });
+      process.on("SIGTERM", () => {
+        cleanup();
+        process.exit(143);
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  releaseLock(): void {
+    if (this.lockPath && fs.existsSync(this.lockPath)) {
+      try {
+        fs.unlinkSync(this.lockPath);
+        this.lockPath = undefined;
+      } catch {}
+    }
   }
 
   hasUncommittedChanges(repoDir: string): boolean {
@@ -1480,6 +1556,41 @@ export class BuildOrchestrator {
     }
 
     try {
+      const getAgentResult = runCommand([herdrBin, "agent", "get", agentName], { capture: true });
+      let existingAgent: any = null;
+      if (getAgentResult.status === 0 && getAgentResult.stdout.trim()) {
+        try {
+          const parsed = JSON.parse(getAgentResult.stdout);
+          existingAgent = parsed?.result?.agent || null;
+        } catch {}
+      }
+
+      if (existingAgent) {
+        console.log(`🐾 Reusing existing Herdr agent '${agentName}' (status: ${existingAgent.agent_status || "idle"})`);
+        if (existingAgent.agent_status === "working") {
+          console.log(`⏳ Agent '${agentName}' is already actively working. Waiting for completion...`);
+          const waitResult = runCommand(
+            [herdrBin, "agent", "wait", agentName, "--state", "idle", "--timeout", "180000"],
+            { capture: true }
+          );
+          return waitResult.status === 0;
+        }
+
+        console.log(`💬 Submitting prompt to existing agent '${agentName}'...`);
+        const promptCmd = [
+          herdrBin,
+          "agent",
+          "prompt",
+          agentName,
+          prompt,
+          "--wait",
+          "--timeout",
+          "180000",
+        ];
+        const promptRes = runCommand(promptCmd, { capture: true });
+        return promptRes.status === 0;
+      }
+
       const splitResult = runCommand(
         [
           herdrBin,

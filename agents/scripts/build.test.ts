@@ -271,4 +271,29 @@ Here is the specification details.
     expect(parsed.statusOnly).toBe(true);
     expect(parsed.dryRun).toBe(true);
   });
+
+  it("prevents duplicate executions with process lock and releases cleanly", () => {
+    const lockOrchestrator = new BuildOrchestrator("canvas-section_y2vtpcom");
+    lockOrchestrator.spec = {
+      identifier: "canvas-section_y2vtpcom",
+      title: "Canvas Section",
+      filePath: "/fake/path.md",
+      content: "",
+      project: "starfocus",
+      metadata: {},
+      targetProject: "starfocus",
+    };
+
+    const firstAcquire = lockOrchestrator.acquireLock();
+    expect(firstAcquire).toBe(true);
+    expect(lockOrchestrator.lockPath).toBeDefined();
+
+    const secondOrchestrator = new BuildOrchestrator("canvas-section_y2vtpcom");
+    secondOrchestrator.spec = lockOrchestrator.spec;
+    const secondAcquire = secondOrchestrator.acquireLock();
+    expect(secondAcquire).toBe(false);
+
+    lockOrchestrator.releaseLock();
+    expect(lockOrchestrator.lockPath).toBeUndefined();
+  });
 });
