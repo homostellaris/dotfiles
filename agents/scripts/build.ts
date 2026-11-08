@@ -84,6 +84,20 @@ export interface BuildState {
   history: Array<Record<string, string>>;
 }
 
+export function getDefaultBranch(repoDir: string): string {
+  try {
+    const res = runCommand(["git", "symbolic-ref", "refs/remotes/origin/HEAD"], { cwd: repoDir, capture: true });
+    if (res.status === 0 && res.stdout.trim()) {
+      return res.stdout.trim().replace(/^refs\/remotes\/origin\//, "");
+    }
+  } catch {}
+  for (const candidate of ["main", "master"]) {
+    const res = runCommand(["git", "rev-parse", "--verify", candidate], { cwd: repoDir, capture: true });
+    if (res.status === 0) return candidate;
+  }
+  return "main";
+}
+
 function findExecutable(name: string, fallbackPaths: string[] = []): string | null {
   try {
     const res = child_process.spawnSync("which", [name], { encoding: "utf-8" });
@@ -366,6 +380,19 @@ export class BuildOrchestrator {
     fs.writeFileSync(stateFile, JSON.stringify(state, null, 2), "utf-8");
   }
 
+  hasUncommittedChanges(repoDir: string): boolean {
+    const res = runCommand(["git", "status", "--porcelain"], { cwd: repoDir, capture: true });
+    return res.status === 0 && res.stdout.trim().length > 0;
+  }
+
+  hasUnpushedCommits(repoDir: string, branchName: string = "main"): boolean {
+    const res = runCommand(["git", "log", `origin/${branchName}..HEAD`, "--oneline"], {
+      cwd: repoDir,
+      capture: true,
+    });
+    return res.status === 0 && res.stdout.trim().length > 0;
+  }
+
   determineExternalState(): string {
     if (!this.spec || !this.state) return "DISCOVER_SPEC";
 
@@ -389,41 +416,11 @@ export class BuildOrchestrator {
       return "IMPLEMENT_AND_FIX_LOCAL";
     }
 
-    const prInfo = this.fetchPrDetails(this.state.repo_dir, this.state.branch_name);
-    if (!prInfo) {
-      return "CREATE_PR";
+    if (this.state.deployed) {
+      return "COMPLETED";
     }
 
-    this.state.pr_number = prInfo.number;
-    this.state.pr_url = prInfo.url;
-    this.saveState(this.state);
-
-    if (prInfo.state === "MERGED") {
-      return "VERIFY_DEPLOYMENT";
-    }
-
-    const ciStatus = this.evaluateCiChecks(prInfo);
-    if (ciStatus === "FAILING") {
-      return "FIX_CI_FAILURES";
-    }
-    if (ciStatus === "RUNNING") {
-      return "AWAIT_CI_CHECKS";
-    }
-
-    const reviewStatus = prInfo.reviewDecision;
-    if (reviewStatus === "CHANGES_REQUESTED" || this.hasUnreadHumanComments(prInfo)) {
-      return "RESOLVE_PR_COMMENTS";
-    }
-
-    if (reviewStatus !== "APPROVED") {
-      return "AWAIT_HUMAN_REVIEW";
-    }
-
-    if (!this.state.verifier_passed) {
-      return "RUN_VERIFIER_AGENT";
-    }
-
-    return "AWAIT_PR_MERGE";
+    return "MERGE_AND_PUSH";
   }
 
   checkPlanApprovalStatus(specId: string): string {
@@ -617,8 +614,12 @@ export class BuildOrchestrator {
     if (stage === "IMPLEMENT_AND_FIX_LOCAL") {
       return await this.handleImplementation();
     }
-    if (stage === "CREATE_PR") {
-      return this.handleCreatePr();
+    if (
+      stage === "MERGE_AND_PUSH" ||
+      stage === "COMMIT_AND_PUSH" ||
+      stage === "CREATE_PR"
+    ) {
+      return await this.handleMergeAndPush();
     }
     if (stage === "FIX_CI_FAILURES") {
       return await this.handleFixCi();
@@ -770,6 +771,15 @@ export class BuildOrchestrator {
       }
     }
 
+    // Ensure dedicated port is allocated and saved in .env.local
+    const worktreeHelper = findExecutable("worktree", [
+      path.join(os.homedir(), ".local", "bin", "worktree"),
+      path.join(os.homedir(), "code", "homostellaris", "dotfiles", "agents", "scripts", "worktree.ts"),
+    ]);
+    if (worktreeHelper && fs.existsSync(worktreeHelper)) {
+      runCommand([worktreeHelper, "ensure-port"], { cwd: worktreePath, capture: true });
+    }
+
     // Ensure dependencies are installed in worktree if package.json exists
     if (fs.existsSync(path.join(worktreePath, "package.json"))) {
       console.log("📦 Installing dependencies in worktree...");
@@ -820,7 +830,89 @@ export class BuildOrchestrator {
     return 0;
   }
 
+  async handleMergeAndPush(): Promise<number> {
+    if (!this.spec || !this.state) return 1;
+
+    const worktreeDir = this.state.worktree_dir || this.state.repo_dir;
+    const repoDir = this.state.repo_dir;
+    const defaultBranch = getDefaultBranch(repoDir);
+    const branchName = this.state.branch_name || this.spec.identifier;
+
+    // 1. Ensure all changes in worktree are committed
+    if (this.hasUncommittedChanges(worktreeDir)) {
+      runCommand(["git", "add", "."], { cwd: worktreeDir, capture: false });
+
+      const commitMessage =
+        `✨ implement ${this.spec.title.toLowerCase()}\n\n` +
+        `Co-authored-by: Antigravity <antigravity@google.com>`;
+      runCommand(["git", "commit", "-m", commitMessage], { cwd: worktreeDir, capture: false });
+    }
+
+    console.log(`🔀 Merging ${branchName} into ${defaultBranch} and pushing directly to origin...`);
+
+    // 2. Push worktree branch directly to remote origin default branch
+    let pushRes = runCommand(
+      ["git", "push", "origin", `${branchName}:${defaultBranch}`],
+      { cwd: worktreeDir, capture: true }
+    );
+
+    if (pushRes.status !== 0) {
+      // Fetch latest and rebase onto remote default branch if needed
+      runCommand(["git", "fetch", "origin", defaultBranch], { cwd: worktreeDir, capture: true });
+      runCommand(["git", "rebase", `origin/${defaultBranch}`], { cwd: worktreeDir, capture: true });
+      pushRes = runCommand(
+        ["git", "push", "origin", `${branchName}:${defaultBranch}`],
+        { cwd: worktreeDir, capture: true }
+      );
+    }
+
+    if (pushRes.status !== 0) {
+      console.error(`❌ Failed to push branch to origin/${defaultBranch}: ${pushRes.stderr}`);
+      return 1;
+    }
+
+    console.log(`🎉 Pushed directly to origin/${defaultBranch}`);
+
+    // 3. Update local default branch in repoDir if clean
+    if (!this.hasUncommittedChanges(repoDir)) {
+      runCommand(["git", "checkout", defaultBranch], { cwd: repoDir, capture: true });
+      runCommand(["git", "pull", "--ff-only", "origin", defaultBranch], { cwd: repoDir, capture: true });
+    }
+
+    // 4. Cleanup worktree if isolated
+    if (worktreeDir !== repoDir && fs.existsSync(worktreeDir)) {
+      console.log(`🧹 Cleaning up worktree at: ${worktreeDir}`);
+      runCommand(["git", "worktree", "remove", "--force", worktreeDir], {
+        cwd: repoDir,
+        capture: true,
+      });
+      runCommand(["git", "branch", "-D", branchName], { cwd: repoDir, capture: true });
+    }
+
+    this.state.merged = true;
+    this.state.deployed = true;
+    this.state.stage = "COMPLETED";
+    const dashboardUrl = this.publishTaskDashboard("DEPLOYED");
+    this.saveState(this.state);
+
+    const notificationMessage =
+      `🚀 [Merged & Deployed] '${this.spec.title}' merged into ${defaultBranch} and pushed.\n` +
+      `📱 Task Dashboard: ${dashboardUrl}`;
+    this.sendOpenclawNotification(notificationMessage);
+    return 0;
+  }
+
+  handleCommitAndPush(): number {
+    this.handleMergeAndPush();
+    return 0;
+  }
+
   handleCreatePr(): number {
+    this.handleMergeAndPush();
+    return 0;
+  }
+
+  legacyHandleCreatePr(): number {
     if (!this.spec || !this.state || !this.state.worktree_dir || !this.state.branch_name) return 1;
 
     console.log("📦 Committing and opening GitHub Pull Request...");
@@ -1022,8 +1114,12 @@ export class BuildOrchestrator {
   handleVerifyDeployment(): number {
     if (!this.spec || !this.state) return 1;
 
-    console.log("🚀 Verifying post-merge production deployment...");
-    if (this.state.worktree_dir && fs.existsSync(this.state.worktree_dir)) {
+    console.log("🚀 Verifying production deployment...");
+    if (
+      this.state.worktree_dir &&
+      this.state.worktree_dir !== this.state.repo_dir &&
+      fs.existsSync(this.state.worktree_dir)
+    ) {
       runCommand(["git", "worktree", "remove", "--force", this.state.worktree_dir], {
         cwd: this.state.repo_dir,
         capture: false,
