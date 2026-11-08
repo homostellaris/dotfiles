@@ -100,6 +100,7 @@ export interface BuildState {
   plan_approved: boolean;
   repo_tests_passed?: boolean;
   human_reviewed?: boolean;
+  human_review_requested_at?: string;
   dev_url?: string;
   pr_number?: number;
   pr_url?: string;
@@ -682,18 +683,10 @@ export class BuildOrchestrator {
         const data = JSON.parse(line);
         if (data.type === "USER_INPUT") {
           const userContent = String(data.content || "").toLowerCase();
-          if (
-            ["proceed", "approved", "looks good", "ship it", "yes"].some((word) =>
-              userContent.includes(word)
-            )
-          ) {
+          if (/\b(proceed|approve|approved|looks good|ship it|yes|lgtm)\b/i.test(userContent)) {
             return "APPROVED";
           }
-          if (
-            ["change", "fix", "update", "revise", "instead"].some((word) =>
-              userContent.includes(word)
-            )
-          ) {
+          if (/\b(change|fix|update|revise|instead)\b/i.test(userContent)) {
             return "FEEDBACK";
           }
         }
@@ -826,7 +819,10 @@ export class BuildOrchestrator {
 
     const transcriptFile = this.spec ? this.findLatestTranscriptForSpec(this.spec.identifier) : null;
     if (transcriptFile && fs.existsSync(transcriptFile)) {
-      const reviewApproval = this.inspectTranscriptForReviewApproval(transcriptFile);
+      const sinceTimestamp =
+        this.state?.human_review_requested_at ||
+        (this.state?.stage === "AWAIT_HUMAN_REVIEW" ? new Date().toISOString() : undefined);
+      const reviewApproval = this.inspectTranscriptForReviewApproval(transcriptFile, sinceTimestamp);
       if (reviewApproval === "APPROVED") {
         if (this.state) {
           this.state.human_reviewed = true;
@@ -842,7 +838,7 @@ export class BuildOrchestrator {
     return "PENDING";
   }
 
-  inspectTranscriptForReviewApproval(transcriptPath: string): string {
+  inspectTranscriptForReviewApproval(transcriptPath: string, sinceIso?: string): string {
     try {
       const content = fs.readFileSync(transcriptPath, "utf-8");
       const lines = content.trim().split("\n");
@@ -851,20 +847,15 @@ export class BuildOrchestrator {
         const line = lines[index];
         if (!line.trim()) continue;
         const entry = JSON.parse(line);
+        if (sinceIso && entry.created_at && entry.created_at <= sinceIso) {
+          break;
+        }
         if (entry.type === "USER_INPUT") {
           const userContent = String(entry.content || "").toLowerCase();
-          if (
-            ["proceed", "approved", "looks good", "ship it", "yes", "lgtm"].some((word) =>
-              userContent.includes(word)
-            )
-          ) {
+          if (/\b(proceed|approve|approved|looks good|ship it|yes|lgtm)\b/i.test(userContent)) {
             return "APPROVED";
           }
-          if (
-            ["change", "fix", "update", "revise", "instead", "broken", "issue"].some((word) =>
-              userContent.includes(word)
-            )
-          ) {
+          if (/\b(change|fix|update|revise|instead|broken|issue)\b/i.test(userContent)) {
             return "FEEDBACK";
           }
         }
@@ -1421,6 +1412,9 @@ export class BuildOrchestrator {
     this.state.port = assignedPort;
     this.state.dev_url = tailscaleUrl;
     this.state.stage = "AWAIT_HUMAN_REVIEW";
+    if (!this.state.human_review_requested_at) {
+      this.state.human_review_requested_at = new Date().toISOString();
+    }
     this.publishTaskDashboard("HUMAN REVIEW");
     this.saveState(this.state);
 
