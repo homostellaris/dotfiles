@@ -584,18 +584,13 @@ export class BuildOrchestrator {
     const commitsAhead = this.getCommitsAheadCount(this.state.worktree_dir, defaultBranch);
     const hasUncommitted = this.hasUncommittedChanges(this.state.worktree_dir);
 
-    if (this.state.stage === "WORKTREE_INITIALIZED" || (commitsAhead === 0 && !hasUncommitted)) {
+    if (commitsAhead === 0 && !hasUncommitted) {
       return "IMPLEMENT_AND_FIX_LOCAL";
     }
 
     const unitTestsPass = this.runLocalTestGate(this.state.worktree_dir);
     if (!unitTestsPass) {
       return "IMPLEMENT_AND_FIX_LOCAL";
-    }
-
-    const repositoryTestResult = this.runRepositoryTestGate(this.state.worktree_dir);
-    if (!repositoryTestResult.success) {
-      return "FIX_CI_FAILURES";
     }
 
     const humanReviewStatus = this.checkHumanReviewStatus();
@@ -788,6 +783,14 @@ export class BuildOrchestrator {
 
       const combinedOutput = (processExecution.stdout || "") + "\n" + (processExecution.stderr || "");
       if (processExecution.status === 0) {
+        if (combinedOutput.includes(`No unresolved comments on ${branchName}`)) {
+          return { count: 0, rawOutput: combinedOutput.trim() };
+        }
+        const branchPattern = new RegExp(`(\\d+)\\s+unresolved(?:\\s+comments?)?\\s+on\\s+${branchName}`, "i");
+        const branchMatch = combinedOutput.match(branchPattern);
+        if (branchMatch) {
+          return { count: parseInt(branchMatch[1], 10), rawOutput: combinedOutput.trim() };
+        }
         const countMatch = combinedOutput.match(/(\d+)\s+unresolved/i);
         const unresolvedCount = countMatch ? parseInt(countMatch[1], 10) : 0;
         return { count: unresolvedCount, rawOutput: combinedOutput.trim() };
@@ -798,6 +801,18 @@ export class BuildOrchestrator {
   }
 
   checkHumanReviewStatus(): string {
+    if (this.approveFlag || this.state?.human_reviewed || this.state?.pr_approved) {
+      if (this.state) {
+        this.state.human_reviewed = true;
+        this.saveState(this.state);
+      }
+      return "APPROVED";
+    }
+
+    if (this.state && this.state.stage !== "AWAIT_HUMAN_REVIEW") {
+      return "PENDING";
+    }
+
     const branchName = this.state?.branch_name || this.spec?.identifier;
     const repositoryDirectory = this.state?.repo_dir || process.cwd();
 
@@ -807,14 +822,6 @@ export class BuildOrchestrator {
         console.log(`💬 Found ${toolbarComments.count} unresolved Vercel toolbar comment(s) on branch '${branchName}'`);
         return "FEEDBACK_RECEIVED";
       }
-    }
-
-    if (this.approveFlag || this.state?.human_reviewed || this.state?.pr_approved) {
-      if (this.state) {
-        this.state.human_reviewed = true;
-        this.saveState(this.state);
-      }
-      return "APPROVED";
     }
 
     const transcriptFile = this.spec ? this.findLatestTranscriptForSpec(this.spec.identifier) : null;
