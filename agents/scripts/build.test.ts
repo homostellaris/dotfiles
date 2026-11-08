@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import path from "node:path";
 import os from "node:os";
-import { BuildOrchestrator, STAGE_MODELS, parseArguments } from "./build.ts";
+import { BuildOrchestrator, STAGE_MODELS, parseArguments, formatHerdrAgentName } from "./build.ts";
 
 describe("BuildOrchestrator (build.ts)", () => {
   const orchestrator = new BuildOrchestrator("dummy-query");
@@ -295,5 +295,15 @@ Here is the specification details.
 
     lockOrchestrator.releaseLock();
     expect(lockOrchestrator.lockPath).toBeUndefined();
+  });
+
+  it("formats Herdr agent names within 32 character limit preserving identifier suffix", () => {
+    const agentName = formatHerdrAgentName(
+      "impl",
+      "procedural-game-friendly-visual-assets_bp2zucom"
+    );
+    expect(agentName.length).toBeLessThanOrEqual(32);
+    expect(agentName).toBe("impl-procedural-game-fr_bp2zucom");
+    expect(/^[a-z][a-z0-9_-]{0,31}$/.test(agentName)).toBe(true);
   });
 });

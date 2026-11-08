@@ -42,6 +42,23 @@ export const PROJECT_PORT_POOLS: Record<string, { main: number; start: number; e
   default: { main: 6800, start: 6801, end: 6825 },
 };
 
+export function formatHerdrAgentName(prefix: string, identifier: string): string {
+  const cleanPrefix = prefix.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const maxSuffixAndSlugLength = 32 - cleanPrefix.length - 1;
+
+  const parts = identifier.split("_");
+  let slug = parts[0];
+  const suffix = parts.length > 1 ? `_${parts[parts.length - 1]}` : "";
+
+  const availableForSlug = maxSuffixAndSlugLength - suffix.length;
+  if (slug.length > availableForSlug) {
+    slug = slug.slice(0, availableForSlug).replace(/-+$/, "");
+  }
+
+  const candidate = `${cleanPrefix}-${slug}${suffix}`.toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  return candidate.slice(0, 32);
+}
+
 function getTailscaleBaseUrl(): string {
   try {
     const statusJson = child_process.spawnSync("tailscale", ["status", "--json"], {
@@ -1131,14 +1148,15 @@ export class BuildOrchestrator {
   async handleImplementation(): Promise<number> {
     if (!this.spec || !this.state || !this.state.worktree_dir) return 1;
 
-    console.log(`🛠️  Spawning Antigravity Implementer Agent in worktree: ${this.state.worktree_dir}`);
+    const agentName = formatHerdrAgentName("impl", this.spec.identifier);
+    console.log(`🛠️  Spawning Antigravity Implementer Agent '${agentName}' in worktree: ${this.state.worktree_dir}`);
     const prompt =
-      `Implement the feature specified in '${this.spec.filePath}' following the visual plan. ` +
+      `Implement the feature specified in '${this.spec.filePath}' following the technical plan. ` +
       `Write unit and component tests first (TDD), then build the components and functions. ` +
       `Ensure all local tests pass via 'bun test'.`;
 
     const success = await this.runAgentInHerdr(
-      `impl-${this.spec.identifier}`,
+      agentName,
       prompt,
       this.state.worktree_dir,
       STAGE_MODELS.implementer
@@ -1155,7 +1173,7 @@ export class BuildOrchestrator {
       const repairPrompt =
         "Local test suite failed. Please inspect failure output, fix errors, and verify passing status.";
       await this.runAgentInHerdr(
-        `impl-${this.spec.identifier}`,
+        agentName,
         repairPrompt,
         this.state.worktree_dir,
         STAGE_MODELS.repair
@@ -1323,8 +1341,9 @@ export class BuildOrchestrator {
       `Failure output:\n\`\`\`\n${failureLogs}\n\`\`\`\n\n` +
       `Please address the root cause, fix the errors, and verify that the repository test suite passes.`;
 
+    const agentName = formatHerdrAgentName("impl", this.spec.identifier);
     await this.runAgentInHerdr(
-      `impl-${this.spec.identifier}`,
+      agentName,
       repairPrompt,
       this.state.worktree_dir,
       STAGE_MODELS.ciRepair
@@ -1368,7 +1387,7 @@ export class BuildOrchestrator {
     this.publishTaskDashboard("HUMAN REVIEW");
     this.saveState(this.state);
 
-    const herdrAgentName = `impl-${this.spec.identifier}`;
+    const herdrAgentName = formatHerdrAgentName("impl", this.spec.identifier);
 
     console.log("\n==================================================");
     console.log(`⏸️  Awaiting Human Review: ${this.spec.title}`);
@@ -1422,8 +1441,9 @@ export class BuildOrchestrator {
         `Please address the comments, update components and tests accordingly, and ensure tests pass.`
       : `Please review recent comments and feedback from the human reviewer, implement requested adjustments, and verify tests pass.`;
 
+    const agentName = formatHerdrAgentName("impl", this.spec.identifier);
     await this.runAgentInHerdr(
-      `impl-${this.spec.identifier}`,
+      agentName,
       fixPrompt,
       this.state.worktree_dir,
       STAGE_MODELS.commentResolver
@@ -1466,8 +1486,9 @@ export class BuildOrchestrator {
       `Identify any dead code, missing error boundaries, or potential type regressions. ` +
       `Apply direct hardening edits in the worktree.`;
 
+    const verifierAgentName = formatHerdrAgentName("verifier", this.spec.identifier);
     await this.runAgentInHerdr(
-      `verifier-${this.spec.identifier}`,
+      verifierAgentName,
       verifierPrompt,
       this.state.worktree_dir,
       STAGE_MODELS.verifier
@@ -1539,11 +1560,15 @@ export class BuildOrchestrator {
   }
 
   async runAgentInHerdr(
-    agentName: string,
+    rawAgentName: string,
     prompt: string,
     workingDir: string,
     model: string = STAGE_MODELS.implementer
   ): Promise<boolean> {
+    const agentName = rawAgentName.length > 32
+      ? formatHerdrAgentName(rawAgentName.split("-")[0] || "agent", rawAgentName.slice(rawAgentName.indexOf("-") + 1))
+      : rawAgentName;
+
     const herdrBin = findExecutable("herdr", [path.join(os.homedir(), ".local", "bin", "herdr")]);
     if (!herdrBin || !fs.existsSync(herdrBin)) {
       return await this.runAntigravityAgent(
@@ -1570,7 +1595,7 @@ export class BuildOrchestrator {
         if (existingAgent.agent_status === "working") {
           console.log(`⏳ Agent '${agentName}' is already actively working. Waiting for completion...`);
           const waitResult = runCommand(
-            [herdrBin, "agent", "wait", agentName, "--state", "idle", "--timeout", "180000"],
+            [herdrBin, "agent", "wait", agentName, "--until", "idle", "--timeout", "600000"],
             { capture: true }
           );
           return waitResult.status === 0;
@@ -1585,9 +1610,12 @@ export class BuildOrchestrator {
           prompt,
           "--wait",
           "--timeout",
-          "180000",
+          "600000",
         ];
         const promptRes = runCommand(promptCmd, { capture: true });
+        if (promptRes.status !== 0) {
+          console.error(`❌ Herdr prompt error: ${promptRes.stderr || promptRes.stdout}`);
+        }
         return promptRes.status === 0;
       }
 
@@ -1627,7 +1655,10 @@ export class BuildOrchestrator {
           "--model",
           model,
         ];
-        runCommand(startCmd, { capture: true });
+        const startResult = runCommand(startCmd, { capture: true });
+        if (startResult.status !== 0) {
+          console.error(`❌ Herdr start error: ${startResult.stderr || startResult.stdout}`);
+        }
 
         const promptCmd = [
           herdrBin,
@@ -1637,9 +1668,12 @@ export class BuildOrchestrator {
           prompt,
           "--wait",
           "--timeout",
-          "180000",
+          "600000",
         ];
         const promptRes = runCommand(promptCmd, { capture: true });
+        if (promptRes.status !== 0) {
+          console.error(`❌ Herdr prompt error: ${promptRes.stderr || promptRes.stdout}`);
+        }
         return promptRes.status === 0;
       }
     } catch {}
