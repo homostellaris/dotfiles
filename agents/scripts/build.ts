@@ -445,6 +445,35 @@ export class BuildOrchestrator {
     fs.writeFileSync(stateFile, JSON.stringify(state, null, 2), "utf-8");
   }
 
+  getHerdrSessionName(): string {
+    return this.spec ? `build-${this.spec.identifier}` : "default";
+  }
+
+  ensureHerdrSession(herdrBin: string, sessionName: string): boolean {
+    const statusRes = runCommand([herdrBin, "--session", sessionName, "status"], { capture: true });
+    if (statusRes.status === 0 && statusRes.stdout.includes("status: running")) {
+      return true;
+    }
+
+    try {
+      const child = child_process.spawn(herdrBin, ["--session", sessionName, "server"], {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const check = runCommand([herdrBin, "--session", sessionName, "status"], { capture: true });
+        if (check.status === 0 && check.stdout.includes("status: running")) {
+          return true;
+        }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+      }
+    } catch {}
+
+    return false;
+  }
+
   acquireLock(): boolean {
     if (!this.spec || this.dryRun || this.statusOnly) return true;
 
@@ -457,8 +486,9 @@ export class BuildOrchestrator {
         if (existingPid && typeof existingPid === "number") {
           try {
             process.kill(existingPid, 0);
+            const herdrSessionName = this.getHerdrSessionName();
             console.log(`⚠️ An active build process for '${this.spec.identifier}' is already running (PID: ${existingPid}).`);
-            console.log(`👉 Attach to Herdr session: herdr session attach default`);
+            console.log(`👉 Attach to Herdr session: herdr session attach ${herdrSessionName}`);
             return false;
           } catch {
             // Stale lock from terminated process
@@ -1388,6 +1418,7 @@ export class BuildOrchestrator {
     this.saveState(this.state);
 
     const herdrAgentName = formatHerdrAgentName("impl", this.spec.identifier);
+    const sessionName = this.getHerdrSessionName();
 
     console.log("\n==================================================");
     console.log(`⏸️  Awaiting Human Review: ${this.spec.title}`);
@@ -1395,8 +1426,8 @@ export class BuildOrchestrator {
     console.log(`🌐 Local Dev Server:   ${localUrl}`);
     console.log(`📱 Tailscale Dev URL:  ${tailscaleUrl}`);
     console.log(`✨ Vercel Toolbar:     Active for visual comments and annotations in-browser`);
-    console.log(`💬 Herdr Session:      herdr session attach default`);
-    console.log(`👉 Send feedback:      herdr agent prompt ${herdrAgentName} "<your comments>"`);
+    console.log(`💬 Herdr Session:      herdr session attach ${sessionName}`);
+    console.log(`👉 Send feedback:      herdr --session ${sessionName} agent prompt ${herdrAgentName} "<your comments>"`);
     console.log(`\n✅ Once satisfied, approve via:`);
     console.log(`   - Reply 'approve' on WhatsApp or in transcript`);
     console.log(`   - Run: build --spec-id ${this.spec.identifier} --approve`);
@@ -1406,7 +1437,7 @@ export class BuildOrchestrator {
       `⏸️ [Human Review Required] '${this.spec.title}' is ready for review!\n` +
       `🌐 Local: ${localUrl}\n` +
       `📱 Tailscale: ${tailscaleUrl}\n` +
-      `✨ Use Vercel Toolbar for comments or prompt herdr agent '${herdrAgentName}'.\n` +
+      `✨ Use Vercel Toolbar for comments or prompt herdr agent '${herdrAgentName}' (herdr session attach ${sessionName}).\n` +
       `Reply 'approve' or run 'build --spec-id ${this.spec.identifier} --approve' to merge.`;
     this.sendOpenclawNotification(notificationMessage);
   }
@@ -1580,8 +1611,21 @@ export class BuildOrchestrator {
       );
     }
 
+    const sessionName = this.getHerdrSessionName();
+    const sessionReady = this.ensureHerdrSession(herdrBin, sessionName);
+    if (!sessionReady) {
+      console.warn(`⚠️ Failed to connect to Herdr session '${sessionName}', falling back to background runner.`);
+      return await this.runAntigravityAgent(
+        agentName,
+        "You are an AI coding assistant.",
+        prompt,
+        workingDir,
+        model
+      );
+    }
+
     try {
-      const getAgentResult = runCommand([herdrBin, "agent", "get", agentName], { capture: true });
+      const getAgentResult = runCommand([herdrBin, "--session", sessionName, "agent", "get", agentName], { capture: true });
       let existingAgent: any = null;
       if (getAgentResult.status === 0 && getAgentResult.stdout.trim()) {
         try {
@@ -1591,19 +1635,21 @@ export class BuildOrchestrator {
       }
 
       if (existingAgent) {
-        console.log(`🐾 Reusing existing Herdr agent '${agentName}' (status: ${existingAgent.agent_status || "idle"})`);
+        console.log(`🐾 Reusing existing Herdr agent '${agentName}' in session '${sessionName}' (status: ${existingAgent.agent_status || "idle"})`);
         if (existingAgent.agent_status === "working") {
           console.log(`⏳ Agent '${agentName}' is already actively working. Waiting for completion...`);
           const waitResult = runCommand(
-            [herdrBin, "agent", "wait", agentName, "--until", "idle", "--timeout", "600000"],
+            [herdrBin, "--session", sessionName, "agent", "wait", agentName, "--until", "idle", "--timeout", "600000"],
             { capture: true }
           );
           return waitResult.status === 0;
         }
 
-        console.log(`💬 Submitting prompt to existing agent '${agentName}'...`);
+        console.log(`💬 Submitting prompt to existing agent '${agentName}' in session '${sessionName}'...`);
         const promptCmd = [
           herdrBin,
+          "--session",
+          sessionName,
           "agent",
           "prompt",
           agentName,
@@ -1619,38 +1665,59 @@ export class BuildOrchestrator {
         return promptRes.status === 0;
       }
 
-      const splitResult = runCommand(
-        [
-          herdrBin,
-          "pane",
-          "split",
-          "--direction",
-          "right",
-          "--cwd",
-          workingDir,
-          "--no-focus",
-        ],
-        { capture: true }
-      );
-
-      let paneId: string | null = null;
-      if (splitResult.status === 0) {
+      const paneListRes = runCommand([herdrBin, "--session", sessionName, "pane", "list"], { capture: true });
+      let panes: any[] = [];
+      if (paneListRes.status === 0 && paneListRes.stdout.trim()) {
         try {
-          const splitJson = JSON.parse(splitResult.stdout);
-          paneId = splitJson?.result?.pane?.pane_id || null;
+          panes = JSON.parse(paneListRes.stdout)?.result?.panes || [];
         } catch {}
       }
 
-      if (paneId) {
+      let targetPaneId: string | null = null;
+      if (panes.length === 0) {
+        const createResult = runCommand(
+          [herdrBin, "--session", sessionName, "workspace", "create", "--cwd", workingDir, "--label", sessionName],
+          { capture: true }
+        );
+        if (createResult.status === 0 && createResult.stdout.trim()) {
+          try {
+            const createJson = JSON.parse(createResult.stdout);
+            targetPaneId = createJson?.result?.root_pane?.pane_id || null;
+          } catch {}
+        }
+        if (!targetPaneId) {
+          const refreshedPanesRes = runCommand([herdrBin, "--session", sessionName, "pane", "list"], { capture: true });
+          if (refreshedPanesRes.status === 0) {
+            try {
+              const refreshedPanes = JSON.parse(refreshedPanesRes.stdout)?.result?.panes || [];
+              if (refreshedPanes.length > 0) {
+                targetPaneId = refreshedPanes[0].pane_id;
+              }
+            } catch {}
+          }
+        }
+      } else {
+        targetPaneId = panes[0].pane_id;
+        if (panes.length > 1) {
+          console.log(`🧹 Closing ${panes.length - 1} extra pane(s) in session '${sessionName}' to protect single-agent layout...`);
+          for (let i = 1; i < panes.length; i++) {
+            runCommand([herdrBin, "--session", sessionName, "pane", "close", panes[i].pane_id], { capture: true });
+          }
+        }
+      }
+
+      if (targetPaneId) {
         const startCmd = [
           herdrBin,
+          "--session",
+          sessionName,
           "agent",
           "start",
           agentName,
           "--kind",
           "agy",
           "--pane",
-          paneId,
+          targetPaneId,
           "--",
           "--model",
           model,
@@ -1660,8 +1727,12 @@ export class BuildOrchestrator {
           console.error(`❌ Herdr start error: ${startResult.stderr || startResult.stdout}`);
         }
 
+        runCommand([herdrBin, "--session", sessionName, "agent", "wait", agentName, "--until", "idle", "--timeout", "15000"], { capture: true });
+
         const promptCmd = [
           herdrBin,
+          "--session",
+          sessionName,
           "agent",
           "prompt",
           agentName,

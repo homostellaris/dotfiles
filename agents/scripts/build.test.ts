@@ -306,4 +306,21 @@ Here is the specification details.
     expect(agentName).toBe("impl-procedural-game-fr_bp2zucom");
     expect(/^[a-z][a-z0-9_-]{0,31}$/.test(agentName)).toBe(true);
   });
+
+  it("determines dedicated Herdr session name from spec identifier", () => {
+    const orchestrator = new BuildOrchestrator("canvas-section_y2vtpcom");
+    orchestrator.spec = {
+      identifier: "canvas-section_y2vtpcom",
+      title: "Canvas Section",
+      filePath: "/fake/path.md",
+      content: "",
+      project: "starfocus",
+      metadata: {},
+      targetProject: "starfocus",
+    };
+    expect(orchestrator.getHerdrSessionName()).toBe("build-canvas-section_y2vtpcom");
+
+    const fallbackOrchestrator = new BuildOrchestrator("");
+    expect(fallbackOrchestrator.getHerdrSessionName()).toBe("default");
+  });
 });
