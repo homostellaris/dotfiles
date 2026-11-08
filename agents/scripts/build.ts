@@ -27,9 +27,8 @@ const REPOSITORIES_DIRECTORY = path.join(os.homedir(), "code", "homostellaris");
 const ANTIGRAVITY_APP_DATA = path.join(os.homedir(), ".gemini", "antigravity-cli");
 
 export const STAGE_MODELS = {
-  architect: "gemini-4-argon-high",
-  visualizer: "gemini-3.8-flash-high",
   planner: "gemini-4-argon-high",
+  architect: "gemini-4-argon-high",
   implementer: "gemini-4-argon-high",
   repair: "gemini-3.8-flash-high",
   ciRepair: "gemini-3.8-flash-high",
@@ -446,11 +445,11 @@ export class BuildOrchestrator {
   checkPlanApprovalStatus(specId: string): string {
     if (!this.spec) return "NOT_GENERATED";
 
-    const sharePlan = path.join(os.homedir(), "share", this.spec.targetProject, `${specId}.html`);
-    const legacyPlan = path.join(os.homedir(), ".local", "share", "agent-reports", `${specId}.html`);
-    const rootSharePlan = path.join(os.homedir(), "share", `${specId}.html`);
-
-    const planExists = fs.existsSync(sharePlan) || fs.existsSync(legacyPlan) || fs.existsSync(rootSharePlan);
+    const defaultPlanPath = path.join(STATE_DIRECTORY, "plans", `${specId}.md`);
+    const statePlanPath = this.state?.plan_file;
+    const planExists =
+      (statePlanPath && fs.existsSync(statePlanPath)) ||
+      fs.existsSync(defaultPlanPath);
     if (!planExists) {
       return "NOT_GENERATED";
     }
@@ -851,51 +850,27 @@ export class BuildOrchestrator {
     fs.mkdirSync(plansDirectory, { recursive: true });
     const markdownPlanPath = path.join(plansDirectory, `${this.spec.identifier}.md`);
 
-    console.log("🧠 Phase 1: Spawning Architect Agent (Gemini 4 Argon High) to design technical architecture...");
-    const architectPrompt =
+    console.log("🧠 Spawning Planner Agent (Gemini 4 Argon High) to formulate native technical plan...");
+    const plannerPrompt =
       `Please read the specification file at '${this.spec.filePath}' for project '${this.spec.targetProject}'. ` +
       `Explore the repository to analyze existing patterns, schemas, routing, and component contracts. ` +
-      `Formulate a rigorous technical architecture and save the complete Markdown plan to '${markdownPlanPath}'. ` +
-      `Include: feature breakdown, data models and schema changes, component contracts, implementation steps, and architectural trade-offs. ` +
-      `Focus on technical decisions and write clear, complete Markdown without HTML markup.`;
+      `Formulate a comprehensive technical plan and save the complete Markdown plan to '${markdownPlanPath}'. ` +
+      `Include: feature breakdown, data models and schema changes, component contracts, implementation steps, testing strategy, and architectural trade-offs.`;
 
-    const architectSuccess = await this.runAntigravityAgent(
-      `architect-${this.spec.identifier}`,
-      "You are the Lead Software Architect. Explore the codebase and formulate a comprehensive Markdown technical plan.",
-      architectPrompt,
+    const plannerSuccess = await this.runAntigravityAgent(
+      `planner-${this.spec.identifier}`,
+      "You are the Lead Software Architect. Explore the codebase and formulate a comprehensive technical plan in Markdown.",
+      plannerPrompt,
       this.state.repo_dir,
-      STAGE_MODELS.architect
+      STAGE_MODELS.planner
     );
 
-    if (!architectSuccess) {
-      console.error("❌ Architect agent execution encountered an error.");
+    if (!plannerSuccess) {
+      console.error("❌ Planner agent execution encountered an error.");
       return 1;
     }
 
     this.state.plan_file = markdownPlanPath;
-
-    console.log("🎨 Phase 2: Spawning Visualizer Agent (Gemini 3.8 Flash) to render standalone /visual-plan HTML report...");
-    const outputPath = path.join(os.homedir(), "share", this.spec.targetProject, `${this.spec.identifier}.html`);
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-
-    const visualizerPrompt =
-      `Please read the architectural Markdown plan at '${markdownPlanPath}' and specification at '${this.spec.filePath}'. ` +
-      `Using the /visual-plan skill format, generate a rich standalone visual plan HTML report at '${outputPath}'. ` +
-      `Include interactive Mermaid diagrams (for architecture and data flow), structured tables for data models and component contracts, ` +
-      `and visual wireframe blocks illustrating UI states.`;
-
-    const visualizerSuccess = await this.runAntigravityAgent(
-      `visualizer-${this.spec.identifier}`,
-      "You are a Technical Illustrator and UI Designer. Render rich visual plan HTML reports from Markdown designs.",
-      visualizerPrompt,
-      this.state.repo_dir,
-      STAGE_MODELS.visualizer
-    );
-
-    if (!visualizerSuccess) {
-      console.error("❌ Visualizer agent execution encountered an error.");
-      return 1;
-    }
 
     const dashboardUrl = this.publishTaskDashboard("PLAN REVIEW");
     this.state.visual_plan_url = dashboardUrl;
@@ -903,20 +878,23 @@ export class BuildOrchestrator {
     this.saveState(this.state);
 
     const notificationMessage =
-      `⚠️ [Plan Review Required] Task dashboard & visual plan generated for '${this.spec.title}'.\n` +
-      `🔗 Task Dashboard: ${dashboardUrl}\n` +
-      `Reply 'approve' or tap: https://wa.me/447812754124?text=approve%20${this.spec.identifier}`;
+      `⚠️ [Plan Review Required] Native technical plan generated for '${this.spec.title}'.\n` +
+      `🔗 Plan Dashboard: ${dashboardUrl}\n` +
+      `📄 Plan File: ${markdownPlanPath}\n` +
+      `Reply 'approve' or run 'build --spec-id ${this.spec.identifier} --approve' to proceed.`;
     this.sendOpenclawNotification(notificationMessage);
 
-    console.log(`✅ Task dashboard published: ${dashboardUrl}`);
+    console.log(`✅ Plan published to dashboard: ${dashboardUrl}`);
+    console.log(`📄 Markdown Plan: ${markdownPlanPath}`);
     console.log("⏸️  Awaiting human plan approval. Exiting cleanly.");
     return 0;
   }
 
   handleAwaitPlanApproval(): void {
-    console.log("⏸️  Visual plan is waiting for your review:");
+    console.log("⏸️  Technical plan is waiting for your review:");
     console.log(`🔗 ${this.state?.visual_plan_url || `${getTailscaleBaseUrl()}/`}`);
-    console.log(`👉 Reply 'approve' on WhatsApp or run 'build --spec-id ${this.spec?.identifier}' after approving.`);
+    console.log(`📄 Markdown Plan: ${this.state?.plan_file || "N/A"}`);
+    console.log(`👉 Reply 'approve' on WhatsApp or run 'build --spec-id ${this.spec?.identifier} --approve' after approving.`);
   }
 
   handleSetupWorktree(): number {
@@ -1498,18 +1476,6 @@ export class BuildOrchestrator {
       "--status",
       status,
     ];
-
-    const planCandidates = [
-      path.join(os.homedir(), "share", this.spec.targetProject, `${this.spec.identifier}.html`),
-      path.join(os.homedir(), "share", `${this.spec.identifier}.html`),
-      path.join(os.homedir(), ".local", "share", "agent-reports", `${this.spec.identifier}.html`),
-    ];
-    for (const candidate of planCandidates) {
-      if (fs.existsSync(candidate)) {
-        cmd.push("--visual-plan", candidate);
-        break;
-      }
-    }
 
     if (this.state.plan_file && fs.existsSync(this.state.plan_file)) {
       cmd.push("--written-plan", this.state.plan_file);
