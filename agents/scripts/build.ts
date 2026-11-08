@@ -1642,7 +1642,7 @@ export class BuildOrchestrator {
         if (existingAgent.agent_status === "working") {
           console.log(`⏳ Agent '${agentName}' is already actively working. Waiting for completion...`);
           const waitResult = runCommand(
-            [herdrBin, "--session", sessionName, "agent", "wait", agentName, "--until", "idle", "--timeout", "600000"],
+            [herdrBin, "--session", sessionName, "agent", "wait", agentName, "--until", "idle", "--timeout", "1800000"],
             { capture: true }
           );
           return waitResult.status === 0;
@@ -1659,10 +1659,19 @@ export class BuildOrchestrator {
           prompt,
           "--wait",
           "--timeout",
-          "600000",
+          "1800000",
         ];
         const promptRes = runCommand(promptCmd, { capture: true });
         if (promptRes.status !== 0) {
+          const checkAgent = runCommand([herdrBin, "--session", sessionName, "agent", "get", agentName], { capture: true });
+          try {
+            const parsed = JSON.parse(checkAgent.stdout)?.result?.agent;
+            if (parsed?.agent_status === "working") {
+              console.log(`⏳ Agent '${agentName}' is still actively working. Continuing wait...`);
+              const waitAgain = runCommand([herdrBin, "--session", sessionName, "agent", "wait", agentName, "--until", "idle", "--timeout", "1800000"], { capture: true });
+              return waitAgain.status === 0;
+            }
+          } catch {}
           console.error(`❌ Herdr prompt error: ${promptRes.stderr || promptRes.stdout}`);
         }
         return promptRes.status === 0;
@@ -1743,10 +1752,19 @@ export class BuildOrchestrator {
           prompt,
           "--wait",
           "--timeout",
-          "600000",
+          "1800000",
         ];
         const promptRes = runCommand(promptCmd, { capture: true });
         if (promptRes.status !== 0) {
+          const checkAgent = runCommand([herdrBin, "--session", sessionName, "agent", "get", agentName], { capture: true });
+          try {
+            const parsed = JSON.parse(checkAgent.stdout)?.result?.agent;
+            if (parsed?.agent_status === "working") {
+              console.log(`⏳ Agent '${agentName}' is still actively working. Continuing wait...`);
+              const waitAgain = runCommand([herdrBin, "--session", sessionName, "agent", "wait", agentName, "--until", "idle", "--timeout", "1800000"], { capture: true });
+              return waitAgain.status === 0;
+            }
+          } catch {}
           console.error(`❌ Herdr prompt error: ${promptRes.stderr || promptRes.stdout}`);
         }
         return promptRes.status === 0;
