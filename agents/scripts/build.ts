@@ -186,20 +186,35 @@ export class BuildOrchestrator {
     console.log(`🚀 Starting build orchestration for: ${this.spec.title} (${this.spec.identifier})`);
     console.log(`📁 Target Project: ${this.spec.targetProject} -> ${this.state.repo_dir}`);
 
-    const determinedStage = this.determineExternalState();
-    console.log(`🔍 Evaluated External State: ${determinedStage}`);
+    while (true) {
+      const determinedStage = this.determineExternalState();
+      console.log(`🔍 Evaluated External State: ${determinedStage}`);
 
-    if (this.statusOnly) {
-      this.printStatus(determinedStage);
-      return 0;
+      if (this.statusOnly) {
+        this.printStatus(determinedStage);
+        return 0;
+      }
+
+      if (this.dryRun) {
+        this.printDryRunSummary(determinedStage);
+        return 0;
+      }
+
+      const exitCode = await this.advanceLifecycle(determinedStage);
+      if (exitCode !== 0) {
+        return exitCode;
+      }
+
+      if (
+        determinedStage === "AWAIT_PLAN_APPROVAL" ||
+        determinedStage === "AWAIT_HUMAN_REVIEW" ||
+        determinedStage === "AWAIT_PR_MERGE" ||
+        determinedStage === "AWAIT_CI_CHECKS" ||
+        determinedStage === "COMPLETED"
+      ) {
+        return 0;
+      }
     }
-
-    if (this.dryRun) {
-      this.printDryRunSummary(determinedStage);
-      return 0;
-    }
-
-    return await this.advanceLifecycle(determinedStage);
   }
 
   slugifyPrompt(promptText: string): string {
@@ -413,6 +428,17 @@ export class BuildOrchestrator {
     return res.status === 0 && res.stdout.trim().length > 0;
   }
 
+  getCommitsAheadCount(worktreeDir: string, baseBranch: string): number {
+    const res = runCommand(["git", "rev-list", "--count", `origin/${baseBranch}..HEAD`], {
+      cwd: worktreeDir,
+      capture: true,
+    });
+    if (res.status === 0 && res.stdout.trim()) {
+      return parseInt(res.stdout.trim(), 10) || 0;
+    }
+    return 0;
+  }
+
   determineExternalState(): string {
     if (!this.spec || !this.state) return "DISCOVER_SPEC";
 
@@ -429,6 +455,14 @@ export class BuildOrchestrator {
 
     if (!this.isWorktreeInitialized(this.state.worktree_dir)) {
       return "SETUP_WORKTREE";
+    }
+
+    const defaultBranch = getDefaultBranch(this.state.repo_dir);
+    const commitsAhead = this.getCommitsAheadCount(this.state.worktree_dir, defaultBranch);
+    const hasUncommitted = this.hasUncommittedChanges(this.state.worktree_dir);
+
+    if (this.state.stage === "WORKTREE_INITIALIZED" || (commitsAhead === 0 && !hasUncommitted)) {
+      return "IMPLEMENT_AND_FIX_LOCAL";
     }
 
     const unitTestsPass = this.runLocalTestGate(this.state.worktree_dir);

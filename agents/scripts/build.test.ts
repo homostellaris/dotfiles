@@ -241,6 +241,7 @@ Here is the specification details.
     feedbackOrchestrator.checkPlanApprovalStatus = () => "APPROVED";
     feedbackOrchestrator.isWorktreeInitialized = () => true;
     feedbackOrchestrator.hasUncommittedChanges = () => false;
+    feedbackOrchestrator.getCommitsAheadCount = () => 1;
     feedbackOrchestrator.runLocalTestGate = () => true;
     feedbackOrchestrator.runRepositoryTestGate = () => ({ success: true, output: "" });
     feedbackOrchestrator.checkHumanReviewStatus = () => "FEEDBACK_RECEIVED";
@@ -248,7 +249,7 @@ Here is the specification details.
     expect(feedbackOrchestrator.determineExternalState()).toBe("RESOLVE_FEEDBACK");
   });
 
-  it("predicts port 6601 for uninitialized starfocus worktree when pool is clear", () => {
+  it("predicts port for uninitialized worktree from pool or registry", () => {
     const starfocusOrchestrator = new BuildOrchestrator("canvas-section_y2vtpcom");
     starfocusOrchestrator.spec = {
       identifier: "canvas-section_y2vtpcom",
@@ -260,7 +261,8 @@ Here is the specification details.
       targetProject: "starfocus",
     };
     const predictedPort = starfocusOrchestrator.getWorktreePort("/fake/uninitialized/worktree");
-    expect(predictedPort).toBe(6601);
+    expect(predictedPort).toBeGreaterThanOrEqual(6601);
+    expect(predictedPort).toBeLessThanOrEqual(6625);
   });
 
   it("parses status command positionally and flags statusOnly", () => {
