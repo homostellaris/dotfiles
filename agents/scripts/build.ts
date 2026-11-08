@@ -446,7 +446,7 @@ export class BuildOrchestrator {
   }
 
   getHerdrSessionName(): string {
-    return this.spec ? `build-${this.spec.identifier}` : "default";
+    return this.spec ? this.spec.identifier : "default";
   }
 
   ensureHerdrSession(herdrBin: string, sessionName: string): boolean {

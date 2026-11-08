@@ -30,7 +30,7 @@ Common automation skills and artifact sharing are located under `agents/skills/`
 Automate full feature lifecycles from StarFocus spec to production with Antigravity and Herdr:
 - **CLI Command**: `build <spec-id>` (e.g. `build canvas-section_y2vtpcom`)
 - **Lifecycle**: Spec Discovery → Planner Agent → Tailscale Visual Plan (`share --task`) → Worktree Setup (`<repo>/.worktrees/<spec_id>`) → Implementer Agent → Local Test Gate (`bun test`) & Tailscale Verification → Human Approval → Merge to Default Branch & Direct Push → Worktree Cleanup → Deployment.
-- **Herdr Integration**: Uses `herdr` for session management and interactive agent panes (`herdr session attach build-<spec-id>`).
+- **Herdr Integration**: Uses `herdr` for session management and interactive agent panes (`herdr session attach <spec-id>`).
 - **Idempotency**: Pure external state evaluation (AGY transcripts, Git worktrees, tests, Git status) without requiring flags.
 
 <posthog>

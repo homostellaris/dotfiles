@@ -318,7 +318,7 @@ Here is the specification details.
       metadata: {},
       targetProject: "starfocus",
     };
-    expect(orchestrator.getHerdrSessionName()).toBe("build-canvas-section_y2vtpcom");
+    expect(orchestrator.getHerdrSessionName()).toBe("canvas-section_y2vtpcom");
 
     const fallbackOrchestrator = new BuildOrchestrator("");
     expect(fallbackOrchestrator.getHerdrSessionName()).toBe("default");
