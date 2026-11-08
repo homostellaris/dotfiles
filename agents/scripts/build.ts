@@ -580,7 +580,53 @@ export class BuildOrchestrator {
     };
   }
 
+  fetchVercelToolbarComments(repositoryDirectory: string, branchName?: string): { count: number; rawOutput: string } {
+    if (!branchName) return { count: 0, rawOutput: "" };
+
+    const vercelBinary = findExecutable("vercel", [
+      path.join(os.homedir(), ".cache", ".bun", "bin", "vercel"),
+      path.join(os.homedir(), ".bun", "bin", "vercel"),
+    ]);
+
+    if (!vercelBinary) {
+      return { count: 0, rawOutput: "" };
+    }
+
+    try {
+      const processExecution = child_process.spawnSync(
+        vercelBinary,
+        ["comments", "--branch", branchName, "--non-interactive"],
+        {
+          cwd: repositoryDirectory,
+          encoding: "utf-8",
+          env: { ...process.env, CI: "1" },
+          timeout: 10000,
+        }
+      );
+
+      const combinedOutput = (processExecution.stdout || "") + "\n" + (processExecution.stderr || "");
+      if (processExecution.status === 0) {
+        const countMatch = combinedOutput.match(/(\d+)\s+unresolved/i);
+        const unresolvedCount = countMatch ? parseInt(countMatch[1], 10) : 0;
+        return { count: unresolvedCount, rawOutput: combinedOutput.trim() };
+      }
+    } catch {}
+
+    return { count: 0, rawOutput: "" };
+  }
+
   checkHumanReviewStatus(): string {
+    const branchName = this.state?.branch_name || this.spec?.identifier;
+    const repositoryDirectory = this.state?.repo_dir || process.cwd();
+
+    if (branchName) {
+      const toolbarComments = this.fetchVercelToolbarComments(repositoryDirectory, branchName);
+      if (toolbarComments.count > 0) {
+        console.log(`💬 Found ${toolbarComments.count} unresolved Vercel toolbar comment(s) on branch '${branchName}'`);
+        return "FEEDBACK_RECEIVED";
+      }
+    }
+
     if (this.approveFlag || this.state?.human_reviewed || this.state?.pr_approved) {
       if (this.state) {
         this.state.human_reviewed = true;
@@ -900,63 +946,33 @@ export class BuildOrchestrator {
   handleSetupWorktree(): number {
     if (!this.state || !this.state.worktree_dir || !this.state.branch_name) return 1;
 
-    console.log(`🌿 Setting up isolated nested worktree at: ${this.state.worktree_dir}`);
-    const worktreePath = this.state.worktree_dir;
-    fs.mkdirSync(path.dirname(worktreePath), { recursive: true });
-
-    // Clean up any stale git worktree registration
-    runCommand(["git", "worktree", "prune"], { cwd: this.state.repo_dir, capture: true });
-
-    if (fs.existsSync(worktreePath)) {
-      runCommand(["git", "worktree", "remove", "--force", worktreePath], {
-        cwd: this.state.repo_dir,
-        capture: true,
-      });
-      if (fs.existsSync(worktreePath)) {
-        fs.rmSync(worktreePath, { recursive: true, force: true });
-      }
-    }
-
-    // Check if the feature branch already exists
-    const branchCheck = runCommand(["git", "rev-parse", "--verify", this.state.branch_name], {
-      cwd: this.state.repo_dir,
-      capture: true,
-    });
-    const branchExists = branchCheck.status === 0;
-
-    const command = branchExists
-      ? ["git", "worktree", "add", worktreePath, this.state.branch_name]
-      : ["git", "worktree", "add", "-b", this.state.branch_name, worktreePath, "HEAD"];
-
-    const res = runCommand(command, { cwd: this.state.repo_dir, capture: true });
-    if (res.status !== 0) {
-      console.error(`❌ Failed to create git worktree: ${res.stderr}`);
-      return 1;
-    }
-
-    for (const envName of [".env", ".env.local"]) {
-      const envFile = path.join(this.state.repo_dir, envName);
-      if (fs.existsSync(envFile)) {
-        fs.copyFileSync(envFile, path.join(worktreePath, envName));
-      }
-    }
-
-    // Ensure dedicated port is allocated and saved in .env.local
+    console.log(`🌿 Setting up isolated worktree using dotfiles worktree script for: ${this.state.branch_name}`);
     const worktreeHelper = findExecutable("worktree", [
       path.join(os.homedir(), ".local", "bin", "worktree"),
       path.join(os.homedir(), "code", "homostellaris", "dotfiles", "agents", "scripts", "worktree.ts"),
     ]);
-    if (worktreeHelper && fs.existsSync(worktreeHelper)) {
-      runCommand([worktreeHelper, "ensure-port"], { cwd: worktreePath, capture: true });
+
+    if (!worktreeHelper) {
+      console.error("❌ Worktree helper script not found.");
+      return 1;
     }
 
-    // Ensure dependencies are installed in worktree if package.json exists
-    if (fs.existsSync(path.join(worktreePath, "package.json"))) {
+    const addExecution = runCommand([worktreeHelper, "add", this.state.branch_name], {
+      cwd: this.state.repo_dir,
+      capture: false,
+    });
+
+    if (addExecution.status !== 0) {
+      console.error("❌ Failed to create worktree via worktree script.");
+      return 1;
+    }
+
+    if (fs.existsSync(path.join(this.state.worktree_dir, "package.json"))) {
       console.log("📦 Installing dependencies in worktree...");
-      runCommand(["bun", "install"], { cwd: worktreePath, capture: false });
+      runCommand(["bun", "install"], { cwd: this.state.worktree_dir, capture: false });
     }
 
-    console.log("✅ Worktree and branch initialized successfully.");
+    console.log("✅ Worktree and branch initialized successfully via worktree script.");
     this.state.stage = "WORKTREE_INITIALIZED";
     this.saveState(this.state);
     return 0;
@@ -1052,11 +1068,16 @@ export class BuildOrchestrator {
     // 4. Cleanup worktree if isolated
     if (worktreeDir !== repoDir && fs.existsSync(worktreeDir)) {
       console.log(`🧹 Cleaning up worktree at: ${worktreeDir}`);
-      runCommand(["git", "worktree", "remove", "--force", worktreeDir], {
-        cwd: repoDir,
-        capture: true,
-      });
-      runCommand(["git", "branch", "-D", branchName], { cwd: repoDir, capture: true });
+      const worktreeHelper = findExecutable("worktree", [
+        path.join(os.homedir(), ".local", "bin", "worktree"),
+        path.join(os.homedir(), "code", "homostellaris", "dotfiles", "agents", "scripts", "worktree.ts"),
+      ]);
+      if (worktreeHelper && branchName) {
+        runCommand([worktreeHelper, "remove", branchName], { cwd: repoDir, capture: true });
+      } else {
+        runCommand(["git", "worktree", "remove", "--force", worktreeDir], { cwd: repoDir, capture: true });
+        runCommand(["git", "branch", "-D", branchName], { cwd: repoDir, capture: true });
+      }
     }
 
     this.state.merged = true;
@@ -1231,8 +1252,23 @@ export class BuildOrchestrator {
       latestFeedback = this.getLatestFeedbackFromTranscript(transcriptPath);
     }
 
-    const fixPrompt = latestFeedback
-      ? `The human reviewer provided feedback on the implementation:\n\n"${latestFeedback}"\n\n` +
+    const toolbarComments = this.fetchVercelToolbarComments(this.state.repo_dir, this.state.branch_name);
+    let toolbarText = "";
+    if (toolbarComments.count > 0 && toolbarComments.rawOutput) {
+      toolbarText = toolbarComments.rawOutput;
+    }
+
+    const feedbackParts: string[] = [];
+    if (latestFeedback) {
+      feedbackParts.push(`Session transcript feedback:\n"${latestFeedback}"`);
+    }
+    if (toolbarText) {
+      feedbackParts.push(`Vercel toolbar comments:\n${toolbarText}`);
+    }
+
+    const combinedFeedback = feedbackParts.join("\n\n");
+    const fixPrompt = combinedFeedback
+      ? `The human reviewer provided feedback on the implementation:\n\n${combinedFeedback}\n\n` +
         `Please address the comments, update components and tests accordingly, and ensure tests pass.`
       : `Please review recent comments and feedback from the human reviewer, implement requested adjustments, and verify tests pass.`;
 

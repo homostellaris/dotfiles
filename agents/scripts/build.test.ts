@@ -185,4 +185,32 @@ Here is the specification details.
     expect(testResult.success).toBe(false);
     expect(testResult.output).toContain("does not exist");
   });
+
+  it("returns zero toolbar comments when branch name is undefined", () => {
+    const commentsResult = orchestrator.fetchVercelToolbarComments(process.cwd(), undefined);
+    expect(commentsResult.count).toBe(0);
+    expect(commentsResult.rawOutput).toBe("");
+  });
+
+  it("detects feedback when unresolved vercel toolbar comments exist", () => {
+    const feedbackOrchestrator = new BuildOrchestrator(
+      "canvas-section_y2vtpcom",
+      undefined,
+      false,
+      undefined,
+      false
+    );
+    feedbackOrchestrator.state = {
+      spec_id: "canvas-section_y2vtpcom",
+      title: "Canvas Section",
+      repo_dir: process.cwd(),
+      stage: "AWAIT_HUMAN_REVIEW",
+      branch_name: "canvas-section_y2vtpcom",
+    };
+    feedbackOrchestrator.fetchVercelToolbarComments = () => ({
+      count: 2,
+      rawOutput: "2 unresolved comments on branch canvas-section_y2vtpcom",
+    });
+    expect(feedbackOrchestrator.checkHumanReviewStatus()).toBe("FEEDBACK_RECEIVED");
+  });
 });
