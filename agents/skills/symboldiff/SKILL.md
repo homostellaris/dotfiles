@@ -11,11 +11,11 @@ Analyze git diffs at the abstraction level of file paths and code symbols (funct
 
 When reviewing PRs, inspecting feature branches, or understanding large refactors, line-by-line diffs introduce overwhelming noise (formatting changes, small internal logic tweaks, re-ordering).
 
-`symboldiff` lifts the review abstraction to:
-1. **File Tree**: Which files were touched.
-2. **Symbols**: Which functions, types, interfaces, or classes changed.
-3. **Signatures**: Exact parameter and return type changes (⚡ **`Signature Modified`** vs 📝 **`Body Modified`** vs ✨ **`Added`** vs 🔥 **`Deleted`**).
-4. **Visualizer**: An offline, standalone, keyboard-driven HTML app with Vim-style navigation (`j`/`k`, `Tab`, `1`-`5`, `/`, `?`).
+`symboldiff` lifts the review abstraction to a beautifully minimal, multi-page drilldown experience with instant browser back/forward button navigation:
+1. **Level 1 (`#/`): Collapsible File Tree**: Hierarchical directory tree of changed files with directory collapse/expand toggles (`▼`/`▶`), aggregated directory stats (`N files • +X -Y symbols`), full file paths on every row, and instant search filter.
+2. **Level 2 (`#/file/:fIdx`): File Symbols**: Dedicated clean view of a selected file's modified symbols with kind, signatures, and line numbers. (Files with no symbols render their traditional diff directly here).
+3. **Level 3 (`#/file/:fIdx/sym/:sIdx`): Symbol Inspection**: Uncluttered, full-width view of a single symbol featuring both **Traditional Diff** (unified hunk diff with line numbers and red/green highlights) and **Actual Code** (complete source implementation with syntax line numbers and copy button).
+4. **Navigation**: Seamless browser Back / Forward button support (`history.pushState` / hash routing), breadcrumb trail (`Files / <file> / <symbol>`), and keyboard shortcuts (`j`/`k`, `Enter`/`Space`, `←`/`→`, `e`/`c`, `Tab`/`1`/`2`).
 
 ---
 
@@ -60,6 +60,22 @@ The `symboldiff` engine is located at:
 ~/.agents/skills/symboldiff/scripts/symboldiff.mjs --no-open --out /tmp/review.html main
 ```
 
+### 6. Publish to Tailscale Portal & Task Dashboard
+Always publish symbol diffs into the project's task bundle so it is directly navigable from the Portal (`https://omarchy.tail29c7da.ts.net/` or `/tasks/`):
+```bash
+~/.agents/skills/symboldiff/scripts/symboldiff.mjs --no-open --out /tmp/symboldiff.html master
+share --task <spec_id> --project <project_name> --symboldiff /tmp/symboldiff.html
+```
+This ensures the symbol diff is permanently accessible via: **Portal → <Project> → <Task> → SymbolDiff** tab.
+
+### 6. Publish to Tailscale Portal & Task Dashboard
+Always publish symbol diffs into the project's task bundle so it is directly navigable from the Portal (`https://omarchy.tail29c7da.ts.net/` or `/tasks/`):
+```bash
+~/.agents/skills/symboldiff/scripts/symboldiff.mjs --no-open --out /tmp/symboldiff.html master
+share --task <spec_id> --project <project_name> --symboldiff /tmp/symboldiff.html
+```
+This ensures the symbol diff is permanently accessible via: **Portal → <Project> → <Task> → SymbolDiff** tab.
+
 ---
 
 ## Keyboard-Driven Visualizer Navigation
@@ -68,10 +84,12 @@ When the HTML visualizer opens in the browser:
 
 | Key | Action |
 | :--- | :--- |
-| **`j` / `k`** or **`↓` / `↑`** | Navigate down / up items in the active panel |
-| **`Tab` / `Shift-Tab`** | Switch focus between **File Tree** and **Symbol Inspector** |
-| **`/`** | Focus live search bar (filters files, symbols, and signatures) |
-| **`Esc`** | Clear search filter and close modals |
-| **`1` - `5`** | Filter by category: `1` All, `2` Sig Mod, `3` Body Mod, `4` Added, `5` Deleted |
-| **`[` / `]`** | Jump to previous / next modified file |
+| **`j` / `k`** or **`↓` / `↑`** | Navigate down / up list items |
+| **`Enter` / `Space` / `→`** | Open selected file or toggle directory folder open/close |
+| **`←` / `Esc` / `Backspace` / `h`** | Collapse directory folder or go back to previous layer |
+| **`e` / `c`** | Expand all / Collapse all folders (Level 1) |
+| **`Tab`** or **`1` / `2`** | Toggle between **Diff** and **Actual Code** on Level 3 |
+| **`c`** | Copy current diff or code snippet (Level 3) |
+| **`[` / `]`** | Jump to previous / next symbol in Level 3 |
+| **`/`** | Focus filter search bar on Level 1 |
 | **`?`** | Open keyboard shortcut cheat sheet overlay |

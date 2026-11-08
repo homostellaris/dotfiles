@@ -43,19 +43,28 @@ export function parseSymbols(content, filePath) {
   if (!content || typeof content !== 'string') return [];
 
   const ext = filePath.split('.').pop()?.toLowerCase() || '';
+  let symbols = [];
 
   if (['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs'].includes(ext)) {
-    return parseTypeScriptJavaScript(content);
+    symbols = parseTypeScriptJavaScript(content);
   } else if (['py', 'pyw'].includes(ext)) {
-    return parsePython(content);
+    symbols = parsePython(content);
   } else if (['rs'].includes(ext)) {
-    return parseRust(content);
+    symbols = parseRust(content);
   } else if (['go'].includes(ext)) {
-    return parseGo(content);
+    symbols = parseGo(content);
+  } else {
+    symbols = parseGeneric(content);
   }
 
-  // Fallback generic scanner
-  return parseGeneric(content);
+  const lines = content.split('\n');
+  for (const s of symbols) {
+    if (!s.code && s.startLine && s.endLine) {
+      s.code = lines.slice(Math.max(0, s.startLine - 1), s.endLine).join('\n');
+    }
+  }
+
+  return symbols;
 }
 
 /**
@@ -103,7 +112,7 @@ export function parseTypeScriptJavaScript(content) {
     
     // Find matching closing brace
     const block = extractBraceBlock(content, startIdx + match[0].length - 1);
-    const endLine = startLine + (block.text.split('\n').length - 1);
+    const endLine = getLineNumber(block.endIdx);
     
     symbols.push({
       id: name,
@@ -170,7 +179,7 @@ export function parseTypeScriptJavaScript(content) {
       isExported,
       isAsync: false,
       startLine,
-      endLine: startLine + (block.text.split('\n').length - 1),
+      endLine: getLineNumber(block.endIdx),
       bodyHash: hashContent(block.text),
       rawDeclaration: match[0]
     });
@@ -185,7 +194,7 @@ export function parseTypeScriptJavaScript(content) {
     const startIdx = match.index;
     const startLine = getLineNumber(startIdx);
     const block = extractBraceBlock(content, startIdx + match[0].length - 1);
-    const endLine = startLine + (block.text.split('\n').length - 1);
+    const endLine = getLineNumber(block.endIdx);
 
     symbols.push({
       id: className,
@@ -209,18 +218,26 @@ export function parseTypeScriptJavaScript(content) {
 
   // 5. Functions (Standard & Exported)
   // [export] [default] [async] function name<T>(params): ReturnType {
-  const funcRegex = /(?:export\s+)?(?:default\s+)?(async\s+)?function\s*([A-Za-z0-9_$]*)(<[^>]+>)?\s*\(([^)]*)\)(?:\s*:\s*([^{]+))?\s*\{/g;
+  const funcRegex = /(?:export\s+)?(?:default\s+)?(async\s+)?function(?:\s+([A-Za-z0-9_$]+))?(<[^>]+>)?\s*\(/g;
   while ((match = funcRegex.exec(cleanContent)) !== null) {
     const isExported = match[0].includes('export');
     const isAsync = !!match[1];
     const name = match[2] || 'default_function';
     const generics = match[3] || null;
-    const rawParams = match[4] || '';
-    const returnType = match[5]?.trim() || null;
+    const openParenIdx = match.index + match[0].length - 1;
+    const parenBlock = extractParenBlock(cleanContent, openParenIdx);
+    const rawParams = parenBlock.text;
+
+    const postParams = cleanContent.slice(parenBlock.endIdx + 1);
+    const braceMatch = /^(\s*:\s*([^{]+))?\s*\{/.exec(postParams);
+    if (!braceMatch) continue;
+
+    const returnType = braceMatch[2]?.trim() || null;
+    const openBraceIdx = parenBlock.endIdx + 1 + braceMatch[0].lastIndexOf('{');
     const startIdx = match.index;
     const startLine = getLineNumber(startIdx);
-    const block = extractBraceBlock(content, startIdx + match[0].length - 1);
-    const endLine = startLine + (block.text.split('\n').length - 1);
+    const block = extractBraceBlock(content, openBraceIdx);
+    const endLine = getLineNumber(block.endIdx);
 
     const params = parseParams(rawParams);
     const sig = `${isAsync ? 'async ' : ''}function ${name}${generics || ''}(${cleanParams(rawParams)})${returnType ? `: ${returnType}` : ''}`;
@@ -244,29 +261,48 @@ export function parseTypeScriptJavaScript(content) {
 
   // 6. Arrow Functions & Variable Functions:
   // [export] const name = [async] (<params>): ReturnType => {
-  const arrowRegex = /(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(async\s+)?(?:(<[^>]+>)\s*)?(?:\(([^)]*)\)|([A-Za-z0-9_$]+))(?:\s*:\s*([^=]+))?\s*=>\s*(\{)?/g;
+  const arrowRegex = /(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(async\s+)?(?:(<[^>]+>)\s*)?(?:\(|\b([A-Za-z0-9_$]+)\s*=>)/g;
   while ((match = arrowRegex.exec(cleanContent)) !== null) {
     const isExported = match[0].includes('export');
     const name = match[1];
     const isAsync = !!match[2];
     const generics = match[3] || null;
-    const rawParams = match[4] || match[5] || '';
-    const returnType = match[6]?.trim() || null;
-    const hasBrace = !!match[7];
+    const singleParam = match[4];
+
+    let rawParams = '';
+    let postParams = '';
     const startIdx = match.index;
     const startLine = getLineNumber(startIdx);
-    
+
+    let parenEndIdx = match.index + match[0].length;
+    if (singleParam) {
+      rawParams = singleParam;
+      postParams = cleanContent.slice(match.index + match[0].length);
+    } else {
+      const openParenIdx = match.index + match[0].length - 1;
+      const parenBlock = extractParenBlock(cleanContent, openParenIdx);
+      rawParams = parenBlock.text;
+      parenEndIdx = parenBlock.endIdx;
+      postParams = cleanContent.slice(parenBlock.endIdx + 1);
+    }
+
+    const arrowMatch = /^(\s*:\s*([^=]+))?\s*=>\s*(\{)?/.exec(postParams);
+    if (!arrowMatch) continue;
+
+    const returnType = arrowMatch[2]?.trim() || null;
+    const hasBrace = !!arrowMatch[3];
+
     let bodyText = '';
     let endLine = startLine;
     if (hasBrace) {
-      const block = extractBraceBlock(content, startIdx + match[0].length - 1);
+      const openBraceIdx = (singleParam ? match.index + match[0].length : parenEndIdx + 1) + arrowMatch[0].lastIndexOf('{');
+      const block = extractBraceBlock(content, openBraceIdx);
       bodyText = block.text;
-      endLine = startLine + (block.text.split('\n').length - 1);
+      endLine = getLineNumber(block.endIdx);
     } else {
-      // Expression body until semicolon or newline
-      const rest = content.slice(startIdx + match[0].length);
-      const endOfExp = rest.indexOf(';') !== -1 ? rest.indexOf(';') : rest.indexOf('\n');
-      bodyText = rest.slice(0, endOfExp !== -1 ? endOfExp : 50);
+      const afterArrow = postParams.slice(arrowMatch[0].length);
+      const endOfExp = afterArrow.indexOf(';') !== -1 ? afterArrow.indexOf(';') : afterArrow.indexOf('\n');
+      bodyText = afterArrow.slice(0, endOfExp !== -1 ? endOfExp : 50);
       endLine = startLine + bodyText.split('\n').length - 1;
     }
 
@@ -596,6 +632,54 @@ export function parseGeneric(content) {
 }
 
 /**
+ * Helper to match balanced parentheses ( ... )
+ */
+function extractParenBlock(content, openParenIdx) {
+  if (content[openParenIdx] !== '(') {
+    return { text: '', endIdx: openParenIdx };
+  }
+  let depth = 0;
+  let inString = false;
+  let stringChar = '';
+
+  for (let i = openParenIdx; i < content.length; i++) {
+    const c = content[i];
+    const next = content[i + 1];
+
+    if (!inString && c === '/' && next === '/') {
+      const nextLine = content.indexOf('\n', i);
+      if (nextLine === -1) break;
+      i = nextLine;
+      continue;
+    }
+
+    if (!inString && (c === '"' || c === "'" || c === '`')) {
+      inString = true;
+      stringChar = c;
+      continue;
+    } else if (inString && c === stringChar && content[i - 1] !== '\\') {
+      inString = false;
+      continue;
+    }
+
+    if (!inString) {
+      if (c === '(') depth++;
+      else if (c === ')') {
+        depth--;
+        if (depth === 0) {
+          return {
+            text: content.slice(openParenIdx + 1, i),
+            endIdx: i
+          };
+        }
+      }
+    }
+  }
+
+  return { text: '', endIdx: openParenIdx };
+}
+
+/**
  * Helper to match balanced curly braces { ... }
  */
 function extractBraceBlock(content, openBraceIdx) {
@@ -736,4 +820,197 @@ function deduplicateSymbols(symbols) {
     }
   }
   return Array.from(map.values()).sort((a, b) => a.startLine - b.startLine);
+}
+
+/**
+ * Fast Myers line diff with common prefix & suffix trimming.
+ * Returns array of diff lines: { type: 'context' | 'add' | 'del', oldLine: number|null, newLine: number|null, text: string }
+ */
+export function diffLines(oldStr, newStr) {
+  if (oldStr === null || oldStr === undefined) {
+    if (newStr === null || newStr === undefined) return [];
+    return String(newStr).split('\n').map((text, i) => ({
+      type: 'add',
+      oldLine: null,
+      newLine: i + 1,
+      text
+    }));
+  }
+  if (newStr === null || newStr === undefined) {
+    return String(oldStr).split('\n').map((text, i) => ({
+      type: 'del',
+      oldLine: i + 1,
+      newLine: null,
+      text
+    }));
+  }
+
+  const a = String(oldStr).split('\n');
+  const b = String(newStr).split('\n');
+
+  // Common prefix
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) {
+    start++;
+  }
+
+  // Common suffix
+  let aEnd = a.length - 1;
+  let bEnd = b.length - 1;
+  while (aEnd >= start && bEnd >= start && a[aEnd] === b[bEnd]) {
+    aEnd--;
+    bEnd--;
+  }
+
+  const prefix = [];
+  for (let i = 0; i < start; i++) {
+    prefix.push({ type: 'context', oldLine: i + 1, newLine: i + 1, text: a[i] });
+  }
+
+  const suffix = [];
+  const aSuffixStart = aEnd + 1;
+  const bSuffixStart = bEnd + 1;
+  for (let i = 0; i < a.length - aSuffixStart; i++) {
+    suffix.push({
+      type: 'context',
+      oldLine: aSuffixStart + i + 1,
+      newLine: bSuffixStart + i + 1,
+      text: a[aSuffixStart + i]
+    });
+  }
+
+  const middleA = a.slice(start, aEnd + 1);
+  const middleB = b.slice(start, bEnd + 1);
+  const middleDiff = myersDiff(middleA, middleB, start);
+
+  return [...prefix, ...middleDiff, ...suffix];
+}
+
+function myersDiff(a, b, offset = 0) {
+  const n = a.length;
+  const m = b.length;
+  const max = n + m;
+  if (max === 0) return [];
+
+  const searchLimit = Math.min(max, 2500);
+  const v = new Map();
+  v.set(1, 0);
+  const trace = [];
+
+  for (let d = 0; d <= searchLimit; d++) {
+    const vCopy = new Map(v);
+    trace.push(vCopy);
+    for (let k = -d; k <= d; k += 2) {
+      let x;
+      if (k === -d || (k !== d && (v.get(k - 1) ?? -1) < (v.get(k + 1) ?? -1))) {
+        x = v.get(k + 1);
+      } else {
+        x = (v.get(k - 1) ?? 0) + 1;
+      }
+      let y = x - k;
+      while (x < n && y < m && a[x] === b[y]) {
+        x++;
+        y++;
+      }
+      v.set(k, x);
+      if (x >= n && y >= m) {
+        const script = [];
+        let curX = n;
+        let curY = m;
+        for (let step = trace.length - 1; step >= 0; step--) {
+          const prevV = trace[step];
+          const k = curX - curY;
+          let prevK;
+          if (k === -step || (k !== step && (prevV.get(k - 1) ?? -1) < (prevV.get(k + 1) ?? -1))) {
+            prevK = k + 1;
+          } else {
+            prevK = k - 1;
+          }
+          const prevX = prevV.get(prevK) ?? 0;
+          const prevY = prevX - prevK;
+          while (curX > prevX && curY > prevY) {
+            curX--;
+            curY--;
+            script.unshift({ type: 'context', oldLine: offset + curX + 1, newLine: offset + curY + 1, text: a[curX] });
+          }
+          if (step > 0) {
+            if (curX > prevX) {
+              curX--;
+              script.unshift({ type: 'del', oldLine: offset + curX + 1, newLine: null, text: a[curX] });
+            } else if (curY > prevY) {
+              curY--;
+              script.unshift({ type: 'add', oldLine: null, newLine: offset + curY + 1, text: b[curY] });
+            }
+          }
+        }
+        return script;
+      }
+    }
+  }
+
+  // Fallback if limit reached
+  const fallback = [];
+  for (let i = 0; i < middleA.length; i++) {
+    fallback.push({ type: 'del', oldLine: offset + i + 1, newLine: null, text: middleA[i] });
+  }
+  for (let i = 0; i < middleB.length; i++) {
+    fallback.push({ type: 'add', oldLine: null, newLine: offset + i + 1, text: middleB[i] });
+  }
+  return fallback;
+}
+
+/**
+ * Group diff lines into traditional diff hunks with context folding
+ * @param {Array<{type: 'context'|'add'|'del', oldLine: number|null, newLine: number|null, text: string}>} lines
+ * @param {number} contextSize Number of context lines around changes (default 3)
+ */
+export function formatDiffHunks(lines, contextSize = 3) {
+  if (!lines || lines.length === 0) return [];
+
+  const changeIndices = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].type !== 'context') {
+      changeIndices.push(i);
+    }
+  }
+
+  if (changeIndices.length === 0) {
+    return [{
+      header: `@@ -1,${lines.length} +1,${lines.length} @@`,
+      lines
+    }];
+  }
+
+  const ranges = [];
+  let currentRange = {
+    start: Math.max(0, changeIndices[0] - contextSize),
+    end: Math.min(lines.length - 1, changeIndices[0] + contextSize)
+  };
+
+  for (let i = 1; i < changeIndices.length; i++) {
+    const chIdx = changeIndices[i];
+    const newStart = Math.max(0, chIdx - contextSize);
+    const newEnd = Math.min(lines.length - 1, chIdx + contextSize);
+
+    if (newStart <= currentRange.end + 1) {
+      currentRange.end = Math.max(currentRange.end, newEnd);
+    } else {
+      ranges.push(currentRange);
+      currentRange = { start: newStart, end: newEnd };
+    }
+  }
+  ranges.push(currentRange);
+
+  return ranges.map(range => {
+    const hunkLines = lines.slice(range.start, range.end + 1);
+    const oldLinesInHunk = hunkLines.filter(l => l.type === 'context' || l.type === 'del');
+    const newLinesInHunk = hunkLines.filter(l => l.type === 'context' || l.type === 'add');
+    const oldStart = oldLinesInHunk.length > 0 ? (oldLinesInHunk[0].oldLine || 1) : 0;
+    const newStart = newLinesInHunk.length > 0 ? (newLinesInHunk[0].newLine || 1) : 0;
+    const header = `@@ -${oldStart},${oldLinesInHunk.length} +${newStart},${newLinesInHunk.length} @@`;
+    return {
+      header,
+      lines: hunkLines
+    };
+  });
 }

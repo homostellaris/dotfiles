@@ -4,7 +4,8 @@
  */
 
 import assert from 'node:assert';
-import { parseSymbols, hashContent } from './parser.mjs';
+import { parseSymbols, hashContent, diffLines, formatDiffHunks } from './parser.mjs';
+import { buildFileTree } from './html-template.mjs';
 
 function runTests() {
   console.log('🧪 Running SymbolDiff Test Suite...\n');
@@ -32,6 +33,14 @@ function runTests() {
           console.log(data);
         }
       }
+
+      export default function complexHandler({ onDone }: { onDone: () => void } = {}) {
+        return 42;
+      }
+
+      export const callbackRunner = (cb: (err: Error | null, res?: string) => void): void => {
+        cb(null, "ok");
+      };
     `;
 
     const symbols = parseSymbols(tsCode, 'metrics.ts');
@@ -43,6 +52,8 @@ function runTests() {
     assert(names.includes('MetricsResult'), 'Should find MetricsResult');
     assert(names.includes('MetricEngine'), 'Should find MetricEngine');
     assert(names.includes('MetricEngine.compute'), 'Should find MetricEngine.compute');
+    assert(names.includes('complexHandler'), 'Should find complexHandler');
+    assert(names.includes('callbackRunner'), 'Should find callbackRunner');
 
     const fnSym = symbols.find(s => s.name === 'calculateMetrics');
     assert.strictEqual(fnSym.isAsync, true, 'calculateMetrics should be async');
@@ -182,6 +193,75 @@ func GlobalHelper(val int) bool {
     assert.notStrictEqual(oldSym.signature, sigModSym.signature, 'Signature should differ for sig mod');
 
     console.log('✅ Test 5 Passed: Signature Modification vs Body Modification correctly differentiated.');
+  }
+
+  // Test 6: Symbol Code Extraction
+  {
+    const tsCode = `export function add(a: number, b: number): number {
+  return a + b;
+}`;
+    const symbols = parseSymbols(tsCode, 'math.ts');
+    assert.strictEqual(symbols.length, 1);
+    assert.strictEqual(symbols[0].code, tsCode, 'Symbol code should match full function declaration');
+
+    console.log('✅ Test 6 Passed: Symbol code extracted accurately.');
+  }
+
+  // Test 7: diffLines and formatDiffHunks
+  {
+    const oldCode = `function test() {\n  const x = 1;\n  return x;\n}`;
+    const newCode = `function test() {\n  const x = 2;\n  console.log(x);\n  return x;\n}`;
+
+    const lines = diffLines(oldCode, newCode);
+    const dels = lines.filter(l => l.type === 'del');
+    const adds = lines.filter(l => l.type === 'add');
+    assert.strictEqual(dels.length, 1, 'Should have 1 deleted line');
+    assert.strictEqual(adds.length, 2, 'Should have 2 added lines');
+
+    const hunks = formatDiffHunks(lines, 3);
+    assert.strictEqual(hunks.length, 1, 'Should format into 1 hunk');
+    assert(hunks[0].header.startsWith('@@'), 'Hunk header should start with @@');
+
+    console.log('✅ Test 7 Passed: diffLines and formatDiffHunks generate traditional diff correctly.');
+  }
+
+  // Test 8: Collapsible tree data structure, compaction, and aggregation
+  {
+    const sampleFiles = [
+      { file: { path: 'README.md', symbolsAdded: 0, symbolsDeleted: 0, symbolsModified: 0, symbols: [] }, fIdx: 0 },
+      { file: { path: 'components/common/Header.tsx', symbolsAdded: 0, symbolsDeleted: 0, symbolsModified: 1, symbols: [{ name: 'Header' }] }, fIdx: 1 },
+      { file: { path: 'components/common/SyncStatus.tsx', symbolsAdded: 4, symbolsDeleted: 0, symbolsModified: 0, symbols: [{ name: 'SyncStatus' }] }, fIdx: 2 },
+      { file: { path: 'components/pages/DevHub.tsx', symbolsAdded: 1, symbolsDeleted: 0, symbolsModified: 0, symbols: [{ name: 'DevHub' }] }, fIdx: 3 },
+      { file: { path: 'cypress/e2e/dev.cy.ts', symbolsAdded: 0, symbolsDeleted: 0, symbolsModified: 0, symbols: [] }, fIdx: 4 },
+      { file: { path: 'cypress/e2e/workbench.cy.ts', symbolsAdded: 0, symbolsDeleted: 0, symbolsModified: 0, symbols: [] }, fIdx: 5 },
+    ];
+
+    const tree = buildFileTree(sampleFiles);
+
+    // Root level files preserved
+    assert.strictEqual(tree.files.length, 1, 'Should have 1 root file');
+    assert.strictEqual(tree.files[0].file.path, 'README.md', 'Root file path matches full path');
+
+    // Directory hierarchy and compaction
+    assert(tree.dirs.has('components'), 'Should have components directory');
+    assert(tree.dirs.has('cypress/e2e'), 'cypress should be compacted to cypress/e2e');
+
+    const compDir = tree.dirs.get('components');
+    assert.strictEqual(compDir.totalFiles, 3, 'components should aggregate 3 files');
+    assert.strictEqual(compDir.symbolsAdded, 5, 'components should aggregate 5 added symbols');
+    assert.strictEqual(compDir.symbolsModified, 1, 'components should aggregate 1 modified symbol');
+    assert(compDir.dirs.has('common'), 'components should have common subfolder');
+    assert(compDir.dirs.has('pages'), 'components should have pages subfolder');
+
+    const commonDir = compDir.dirs.get('common');
+    assert.strictEqual(commonDir.totalFiles, 2, 'common should aggregate 2 files');
+    assert.strictEqual(commonDir.symbolsAdded, 4, 'common should aggregate 4 added symbols');
+    assert(commonDir.files[0].file.path.startsWith('components/common/'), 'Full file path preserved on children');
+
+    const cyDir = tree.dirs.get('cypress/e2e');
+    assert.strictEqual(cyDir.totalFiles, 2, 'cypress/e2e should aggregate 2 files');
+
+    console.log('✅ Test 8 Passed: Collapsible file tree hierarchy, compaction, and aggregation verified.');
   }
 
   console.log('\n🎉 All SymbolDiff tests passed successfully!\n');

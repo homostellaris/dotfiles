@@ -1,7 +1,28 @@
 /**
  * Standalone Keyboard-Driven HTML Visualizer Template for symboldiff.
- * Generates an interactive, zero-dependency, offline-ready HTML single-page app.
+ * Beautifully minimal multi-page drilldown architecture with full browser back/forward history support.
+ *
+ * Layers:
+ *   Level 1 (#/):              All Files (status, path, +/- symbol counts)
+ *   Level 2 (#/file/:fIdx):    File Symbols (list of symbols in selected file)
+ *   Level 3 (#/file/:fIdx/sym/:sIdx): Symbol Diff & Actual Code (focused traditional diff & full implementation)
+ *
+ * Zero external npm dependencies, offline-ready single-page app.
  */
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const clientScriptPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'symboldiff-client.js');
+let cachedClientScript = null;
+
+function getClientScript() {
+  if (!cachedClientScript) {
+    cachedClientScript = fs.readFileSync(clientScriptPath, 'utf-8');
+  }
+  return cachedClientScript;
+}
 
 export function generateHtml({ diffData, comparisonTitle, timestamp }) {
   const jsonStr = JSON.stringify(diffData).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
@@ -17,542 +38,815 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-primary: #090d13;
-      --bg-secondary: #0d1117;
-      --bg-surface: #161b22;
-      --bg-card: #21262d;
-      --bg-hover: #30363d;
-      --border-subtle: #30363d;
-      --border-focus: #58a6ff;
+      --bg-primary: #0a0d12;
+      --bg-surface: #10141d;
+      --bg-card: #161b26;
+      --bg-hover: #1f2636;
+      --border-subtle: #242c3d;
+      --border-focus: #388bfd;
       --text-primary: #f0f6fc;
       --text-secondary: #8b949e;
-      --text-muted: #6e7681;
-      
-      /* Change category colors */
+      --text-muted: #656d76;
+
       --color-added: #2ea043;
-      --color-added-bg: rgba(46, 160, 67, 0.15);
-      --color-added-border: rgba(46, 160, 67, 0.4);
-      
-      --color-sig-mod: #d29922;
-      --color-sig-mod-bg: rgba(210, 153, 34, 0.15);
-      --color-sig-mod-border: rgba(210, 153, 34, 0.4);
-      
-      --color-body-mod: #58a6ff;
-      --color-body-mod-bg: rgba(88, 166, 255, 0.15);
-      --color-body-mod-border: rgba(88, 166, 255, 0.4);
-      
+      --color-added-bg: rgba(46, 160, 67, 0.12);
+      --color-added-line-bg: rgba(46, 160, 67, 0.18);
+      --color-added-border: rgba(46, 160, 67, 0.35);
+
       --color-deleted: #f85149;
-      --color-deleted-bg: rgba(248, 81, 73, 0.15);
-      --color-deleted-border: rgba(248, 81, 73, 0.4);
+      --color-deleted-bg: rgba(248, 81, 73, 0.12);
+      --color-deleted-line-bg: rgba(248, 81, 73, 0.18);
+      --color-deleted-border: rgba(248, 81, 73, 0.35);
+
+      --color-sig-mod: #d29922;
+      --color-sig-mod-bg: rgba(210, 153, 34, 0.12);
+      --color-sig-mod-border: rgba(210, 153, 34, 0.35);
+
+      --color-body-mod: #58a6ff;
+      --color-body-mod-bg: rgba(88, 166, 255, 0.12);
+      --color-body-mod-border: rgba(88, 166, 255, 0.35);
+
+      --color-renamed: #bc8cff;
+      --color-renamed-bg: rgba(188, 140, 255, 0.12);
+      --color-renamed-border: rgba(188, 140, 255, 0.35);
 
       --color-type: #bc8cff;
       --color-interface: #a5d6ff;
       --color-fn: #7ee787;
       --color-class: #ffa657;
-      
+
       --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       --font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html {
+    html, body {
       height: 100%;
-    }
-    body {
       background-color: var(--bg-primary);
       color: var(--text-primary);
       font-family: var(--font-sans);
       font-size: 14px;
       line-height: 1.5;
-      height: 100vh;
-      height: 100dvh;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
     }
 
-    /* Top Navigation Header */
+    /* Top Global Header */
     header {
-      background: var(--bg-secondary);
+      background: var(--bg-surface);
       border-bottom: 1px solid var(--border-subtle);
-      padding: 10px 20px;
+      padding: 10px 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      flex-shrink: 0;
-      z-index: 10;
+      position: sticky;
+      top: 0;
+      z-index: 50;
     }
 
-    .header-main {
+    .header-left {
       display: flex;
       align-items: center;
       gap: 12px;
-      flex-shrink: 0;
+      min-width: 0;
     }
 
-    .brand {
+    .brand-link {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       font-weight: 700;
-      font-size: 16px;
-      letter-spacing: -0.5px;
+      font-size: 15px;
+      color: var(--text-primary);
+      text-decoration: none;
+      letter-spacing: -0.3px;
+      flex-shrink: 0;
     }
     .brand-icon {
       background: linear-gradient(135deg, #58a6ff, #bc8cff);
       color: #fff;
-      width: 28px;
-      height: 28px;
-      border-radius: 6px;
+      width: 24px;
+      height: 24px;
+      border-radius: 5px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 15px;
+      font-size: 13px;
       flex-shrink: 0;
     }
+
     .target-ref {
       font-family: var(--font-mono);
-      font-size: 12px;
+      font-size: 11px;
       color: var(--text-secondary);
-      background: var(--bg-surface);
+      background: var(--bg-card);
       padding: 3px 8px;
       border-radius: 4px;
       border: 1px solid var(--border-subtle);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 260px;
+      max-width: 240px;
     }
 
-    /* Search & Filter Bar */
-    .controls-bar {
+    .shortcuts-label {
+      display: inline;
+    }
+
+    .sym-stat-add { color: var(--color-added); }
+    .sym-stat-del { color: var(--color-deleted); }
+    .sym-stat-mod { color: var(--color-sig-mod); }
+
+    .header-right {
       display: flex;
       align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .icon-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+    .icon-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border-color: var(--border-focus);
+    }
+
+    /* Main Scroll Stage */
+    main {
+      min-height: calc(100vh - 50px);
+      padding: 28px 20px 80px 20px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .view-container {
+      width: 100%;
+      max-width: 1000px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      animation: fadeIn 0.12s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(3px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Breadcrumbs Navigation Bar */
+    .breadcrumb-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       gap: 12px;
-      flex-grow: 1;
-      max-width: 650px;
+      padding-bottom: 4px;
     }
-    .search-wrapper {
+    .back-btn {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      user-select: none;
+    }
+    .back-btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-focus);
+    }
+    .back-btn kbd {
+      background: var(--bg-card);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 1px 4px;
+      border-radius: 3px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+    }
+
+    .breadcrumb-trail {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+      overflow: hidden;
+      min-width: 0;
+    }
+    .breadcrumb-crumb {
+      color: var(--text-secondary);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .breadcrumb-crumb:hover {
+      color: var(--text-primary);
+      text-decoration: underline;
+    }
+    .breadcrumb-crumb.active {
+      color: var(--text-primary);
+      font-weight: 600;
+      text-decoration: none;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .breadcrumb-sep {
+      color: var(--text-muted);
+      font-size: 10px;
+    }
+
+    /* Page View Banner */
+    .page-banner {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .page-banner-main {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+    .page-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow: hidden;
+    }
+    .page-subtitle {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Search Input on Files View */
+    .filter-input-wrapper {
       position: relative;
-      flex-grow: 1;
+      width: 100%;
     }
-    .search-input {
+    .filter-input {
       width: 100%;
       background: var(--bg-surface);
       border: 1px solid var(--border-subtle);
       border-radius: 6px;
-      padding: 6px 12px 6px 32px;
+      padding: 8px 14px 8px 34px;
       color: var(--text-primary);
       font-family: var(--font-sans);
       font-size: 13px;
       outline: none;
-      transition: border-color 0.15s ease;
+      transition: all 0.15s ease;
     }
-    .search-input:focus {
+    .filter-input:focus {
       border-color: var(--border-focus);
-      box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.2);
+      box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
     }
-    .search-icon {
+    .filter-icon {
       position: absolute;
-      left: 10px;
+      left: 12px;
       top: 50%;
       transform: translateY(-50%);
       color: var(--text-muted);
-      font-size: 13px;
+      font-size: 12px;
       pointer-events: none;
     }
-    .search-hint {
-      position: absolute;
-      right: 8px;
-      top: 50%;
-      transform: translateY(-50%);
-      font-family: var(--font-mono);
-      font-size: 10px;
-      color: var(--text-muted);
-      background: var(--bg-card);
-      padding: 1px 5px;
-      border-radius: 3px;
-      border: 1px solid var(--border-subtle);
-    }
 
-    /* Category Filter Buttons */
-    .filter-group {
-      display: flex;
-      gap: 4px;
-      background: var(--bg-surface);
-      padding: 2px;
-      border-radius: 6px;
-      border: 1px solid var(--border-subtle);
-      flex-shrink: 0;
-    }
-    .filter-btn {
-      background: transparent;
-      border: none;
-      color: var(--text-secondary);
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      transition: all 0.15s ease;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    .filter-btn:hover {
-      color: var(--text-primary);
-      background: var(--bg-hover);
-    }
-    .filter-btn.active {
-      background: var(--bg-card);
-      color: var(--text-primary);
-      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    }
-    .filter-badge {
-      font-size: 10px;
-      padding: 0 4px;
-      border-radius: 10px;
-      background: rgba(255,255,255,0.1);
-    }
-
-    .key-hints {
-      display: flex;
-      gap: 6px;
-      flex-shrink: 0;
-    }
-    .key-badge {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--text-secondary);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-subtle);
-      padding: 4px 8px;
-      border-radius: 4px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      user-select: none;
-    }
-    .key-badge kbd {
-      background: var(--bg-card);
-      padding: 1px 4px;
-      border-radius: 3px;
-      font-weight: 600;
-      color: var(--text-primary);
-      font-size: 10px;
-      border: 1px solid var(--border-subtle);
-    }
-
-    /* Mobile Segmented Switcher Tab Bar */
-    .mobile-tab-bar {
-      display: none;
-      background: var(--bg-secondary);
-      border-bottom: 1px solid var(--border-subtle);
-      padding: 6px 12px;
-      gap: 8px;
-      flex-shrink: 0;
-    }
-    .mobile-tab-btn {
-      flex: 1;
-      background: var(--bg-surface);
-      border: 1px solid var(--border-subtle);
-      color: var(--text-secondary);
-      padding: 7px 10px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      font-family: var(--font-sans);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      transition: all 0.15s ease;
-      user-select: none;
-    }
-    .mobile-tab-btn.active {
-      background: var(--bg-card);
-      color: var(--text-primary);
-      border-color: var(--border-focus);
-    }
-    .mobile-tab-badge {
-      font-family: var(--font-mono);
-      font-size: 10px;
-      background: rgba(255,255,255,0.1);
-      padding: 1px 5px;
-      border-radius: 10px;
-    }
-
-    /* Main Container (Split-View) */
-    .app-body {
-      display: flex;
-      flex-grow: 1;
-      overflow: hidden;
-      min-height: 0;
-      position: relative;
-    }
-
-    /* Left Sidebar: File Tree */
-    .sidebar {
-      width: 320px;
-      min-width: 250px;
-      background: var(--bg-secondary);
-      border-right: 1px solid var(--border-subtle);
-      display: flex;
-      flex-direction: column;
-      flex-shrink: 0;
-      min-height: 0;
-    }
-    .panel-header {
-      padding: 10px 16px;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-muted);
-      border-bottom: 1px solid var(--border-subtle);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-shrink: 0;
-    }
-    .file-list {
-      overflow-y: auto;
-      flex-grow: 1;
-      padding: 8px 0;
-    }
-    .file-item {
-      padding: 8px 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      cursor: pointer;
-      user-select: none;
-      transition: background 0.1s ease;
-      border-left: 2px solid transparent;
-    }
-    .file-item:hover {
-      background: var(--bg-surface);
-    }
-    .file-item.selected {
-      background: var(--bg-surface);
-      border-left-color: var(--border-focus);
-    }
-    .file-item.focused {
-      outline: 1px solid var(--border-focus);
-    }
-    .file-info {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .file-path {
-      font-family: var(--font-mono);
-      font-size: 12px;
-      color: var(--text-primary);
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .file-dir {
-      color: var(--text-muted);
-    }
-    .file-badges {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      flex-shrink: 0;
-    }
-    .file-count {
-      font-size: 10px;
-      font-family: var(--font-mono);
-      padding: 1px 5px;
-      border-radius: 10px;
-      background: var(--bg-card);
-      color: var(--text-secondary);
-      border: 1px solid var(--border-subtle);
-    }
-
-    /* Right Main Panel: Symbol Stream */
-    .content-stage {
-      flex-grow: 1;
-      overflow-y: auto;
-      padding: 24px 32px;
-      background: var(--bg-primary);
-      min-height: 0;
-    }
-    .file-section {
-      margin-bottom: 32px;
-    }
-    .file-section-title {
-      font-family: var(--font-mono);
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text-primary);
-      margin-bottom: 12px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding-bottom: 6px;
-      border-bottom: 1px solid var(--border-subtle);
-      word-break: break-all;
-    }
-
-    /* Symbol Cards */
-    .symbol-card {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      margin-bottom: 12px;
-      overflow: hidden;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
-    }
-    .symbol-card:hover {
-      border-color: var(--text-muted);
-    }
-    .symbol-card.focused {
-      border-color: var(--border-focus);
-      box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
-    }
-    .symbol-header {
-      padding: 10px 14px;
-      background: var(--bg-surface);
+    /* Tree Toolbar & Actions */
+    .tree-toolbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      cursor: pointer;
-    }
-    .symbol-title-area {
-      display: flex;
-      align-items: center;
-      gap: 8px;
       flex-wrap: wrap;
     }
-    .symbol-name {
-      font-family: var(--font-mono);
-      font-weight: 600;
-      font-size: 13px;
-      color: var(--text-primary);
-      word-break: break-word;
-    }
-    .symbol-meta {
+    .tree-actions {
       display: flex;
       align-items: center;
       gap: 8px;
+    }
+    .tree-stats-summary {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    /* Minimal Card Lists (Level 1 & Level 2) */
+    .list-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .list-row {
+      padding: 11px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      cursor: pointer;
+      user-select: none;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      transition: background-color 0.12s ease;
+      text-decoration: none;
+      color: inherit;
+    }
+    .list-row:last-child {
+      border-bottom: none;
+    }
+    .list-row:hover {
+      background: var(--bg-hover);
+    }
+    .list-row.focused {
+      background: var(--bg-hover);
+      outline: 2px solid var(--border-focus);
+    }
+
+    /* Tree Indentation & Folder Styling */
+    .tree-folder-children {
+      display: flex;
+      flex-direction: column;
+    }
+    .tree-folder-row {
+      background: rgba(255, 255, 255, 0.02);
+      font-weight: 600;
+      padding-left: calc(16px + var(--depth, 0) * 16px) !important;
+    }
+    .tree-folder-row:hover {
+      background: var(--bg-hover);
+    }
+    .tree-file-row {
+      padding-left: calc(16px + var(--depth, 0) * 16px) !important;
+    }
+    .tree-chevron {
+      font-size: 9px;
+      color: var(--text-muted);
+      width: 14px;
+      text-align: center;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      transition: transform 0.12s ease;
       flex-shrink: 0;
     }
-    .line-number {
+    .folder-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .folder-name {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+    .folder-stats-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       font-family: var(--font-mono);
       font-size: 11px;
+    }
+    .folder-files-count {
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .folder-dot {
+      color: var(--text-muted);
+      font-size: 10px;
+    }
+
+    .list-row-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      overflow: hidden;
+      min-width: 0;
+      flex: 1;
+    }
+    .list-row-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    /* Badges */
+    .status-pill {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      text-transform: uppercase;
+      line-height: 1;
+    }
+    .status-pill.status-a {
+      color: var(--color-added);
+      background: var(--color-added-bg);
+      border: 1px solid var(--color-added-border);
+    }
+    .status-pill.status-m {
+      color: var(--color-sig-mod);
+      background: var(--color-sig-mod-bg);
+      border: 1px solid var(--color-sig-mod-border);
+    }
+    .status-pill.status-d {
+      color: var(--color-deleted);
+      background: var(--color-deleted-bg);
+      border: 1px solid var(--color-deleted-border);
+    }
+    .status-pill.status-r {
+      color: var(--color-renamed);
+      background: var(--color-renamed-bg);
+      border: 1px solid var(--color-renamed-border);
+    }
+
+    .type-pill {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 4px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      flex-shrink: 0;
+      background: var(--bg-card);
+      color: var(--text-muted);
+      border: 1px solid var(--border-subtle);
+    }
+    .type-pill.ts, .type-pill.tsx { color: #3178c6; border-color: rgba(49, 120, 198, 0.4); }
+    .type-pill.js, .type-pill.jsx, .type-pill.mjs { color: #f7df1e; border-color: rgba(247, 223, 30, 0.4); }
+    .type-pill.py { color: #3776ab; border-color: rgba(55, 118, 171, 0.4); }
+    .type-pill.rs { color: #dea584; border-color: rgba(222, 165, 132, 0.4); }
+    .type-pill.go { color: #00add8; border-color: rgba(0, 173, 216, 0.4); }
+    .type-pill.md { color: #8b949e; }
+    .type-pill.json { color: #f0883e; border-color: rgba(240, 136, 62, 0.4); }
+
+    .path-display {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .path-dir { color: var(--text-muted); }
+    .path-file { color: var(--text-primary); font-weight: 600; }
+
+    .rename-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
       color: var(--text-muted);
       white-space: nowrap;
     }
 
-    /* Badges */
-    .badge {
-      font-size: 11px;
-      font-weight: 500;
-      padding: 2px 7px;
-      border-radius: 4px;
+    /* Symbol stats pill */
+    .sym-counts-pill {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      text-transform: capitalize;
+      gap: 5px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .sym-add-badge {
+      color: var(--color-added);
+      background: var(--color-added-bg);
+      padding: 2px 7px;
+      border-radius: 10px;
+      border: 1px solid var(--color-added-border);
+      font-size: 11px;
+      font-family: var(--font-mono);
+      font-weight: 600;
       white-space: nowrap;
     }
-    .badge-kind {
+    .sym-del-badge {
+      color: var(--color-deleted);
+      background: var(--color-deleted-bg);
+      padding: 2px 7px;
+      border-radius: 10px;
+      border: 1px solid var(--color-deleted-border);
+      font-size: 11px;
       font-family: var(--font-mono);
-      font-size: 10px;
       font-weight: 600;
-      padding: 1px 5px;
-      border-radius: 3px;
-      background: var(--bg-card);
-      color: var(--text-secondary);
-      border: 1px solid var(--border-subtle);
+      white-space: nowrap;
     }
-    .badge-kind.fn { color: var(--color-fn); border-color: rgba(126, 231, 135, 0.3); }
-    .badge-kind.method { color: var(--color-fn); border-color: rgba(126, 231, 135, 0.3); }
-    .badge-kind.interface { color: var(--color-interface); border-color: rgba(165, 214, 255, 0.3); }
-    .badge-kind.type { color: var(--color-type); border-color: rgba(188, 140, 255, 0.3); }
-    .badge-kind.class { color: var(--color-class); border-color: rgba(255, 166, 87, 0.3); }
+    .sym-mod-badge {
+      color: var(--color-sig-mod);
+      background: var(--color-sig-mod-bg);
+      padding: 2px 7px;
+      border-radius: 10px;
+      border: 1px solid var(--color-sig-mod-border);
+      font-size: 11px;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .loc-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+      white-space: nowrap;
+    }
+    .sym-total-tag {
+      font-family: var(--font-sans);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      background: var(--bg-card);
+      padding: 2px 7px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+      white-space: nowrap;
+    }
 
-    .badge-status {
+    .row-arrow {
+      color: var(--text-muted);
+      font-size: 13px;
+      transition: transform 0.15s ease, color 0.15s ease;
+    }
+    .list-row:hover .row-arrow {
+      color: var(--text-primary);
+      transform: translateX(3px);
+    }
+
+    /* Symbol Badges */
+    .sym-status-badge {
+      font-family: var(--font-sans);
       font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.3px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
-    .badge-status.added {
+    .sym-status-badge.added {
       background: var(--color-added-bg);
       color: var(--color-added);
       border: 1px solid var(--color-added-border);
     }
-    .badge-status.sig_mod {
+    .sym-status-badge.sig_mod {
       background: var(--color-sig-mod-bg);
       color: var(--color-sig-mod);
       border: 1px solid var(--color-sig-mod-border);
     }
-    .badge-status.body_mod {
+    .sym-status-badge.body_mod {
       background: var(--color-body-mod-bg);
       color: var(--color-body-mod);
       border: 1px solid var(--color-body-mod-border);
     }
-    .badge-status.deleted {
+    .sym-status-badge.deleted {
       background: var(--color-deleted-bg);
       color: var(--color-deleted);
       border: 1px solid var(--color-deleted-border);
     }
 
-    /* Signature Diff Box */
-    .signature-diff-box {
-      padding: 12px 14px;
+    .kind-pill {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-subtle);
+      flex-shrink: 0;
+    }
+    .kind-pill.fn, .kind-pill.function, .kind-pill.method { color: var(--color-fn); border-color: rgba(126, 231, 135, 0.3); }
+    .kind-pill.interface { color: var(--color-interface); border-color: rgba(165, 214, 255, 0.3); }
+    .kind-pill.type { color: var(--color-type); border-color: rgba(188, 140, 255, 0.3); }
+    .kind-pill.class { color: var(--color-class); border-color: rgba(255, 166, 87, 0.3); }
+
+    /* Level 2: Symbol List Row Layout */
+    .sym-list-row {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 12px 18px;
+    }
+    .sym-row-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+    }
+    .sym-row-badges {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .sym-row-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .sym-row-body {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+      min-width: 0;
+      width: 100%;
+    }
+    .sym-name-text {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 13.5px;
+      color: var(--text-primary);
+      word-break: break-word;
+    }
+    .sym-type-text {
       font-family: var(--font-mono);
       font-size: 12px;
-      line-height: 1.6;
-      border-top: 1px solid var(--border-subtle);
+      color: #79c0ff;
+      word-break: break-all;
+      line-height: 1.4;
     }
-    .diff-line {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 4px 8px;
-      border-radius: 4px;
-      margin-bottom: 4px;
-      word-break: break-word;
-      white-space: pre-wrap;
-    }
-    .diff-line:last-child { margin-bottom: 0; }
-    .diff-line.old {
-      background: var(--color-deleted-bg);
-      color: #ffa198;
-      border-left: 3px solid var(--color-deleted);
-    }
-    .diff-line.new {
-      background: var(--color-added-bg);
-      color: #7ee787;
-      border-left: 3px solid var(--color-added);
-    }
-    .diff-line.current {
-      background: var(--bg-surface);
-      color: var(--text-primary);
-      border-left: 3px solid var(--border-subtle);
-    }
-    .diff-icon {
-      font-weight: 700;
-      width: 14px;
-      flex-shrink: 0;
-      user-select: none;
+    .sym-line-tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
     }
 
-    /* Keyboard Modal */
+    /* Level 3: Symbol Inspection Page */
+    .symbol-header-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .symbol-header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .symbol-identity {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .symbol-main-name {
+      font-family: var(--font-mono);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .signature-block {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* Tabs & Viewer Card */
+    .viewer-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .viewer-toolbar {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .tab-btn-group {
+      display: flex;
+      gap: 4px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-secondary);
+      padding: 5px 12px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--font-sans);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.12s ease;
+      user-select: none;
+    }
+    .tab-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+    .tab-btn.active {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border-color: var(--border-subtle);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+
+    .diff-table-container {
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .diff-hunk-header {
+      background: rgba(56, 139, 253, 0.1);
+      color: #79c0ff;
+      padding: 5px 16px;
+      font-size: 11px;
+      font-weight: 600;
+      border-top: 1px solid rgba(56, 139, 253, 0.15);
+      border-bottom: 1px solid rgba(56, 139, 253, 0.15);
+      user-select: none;
+    }
+    .diff-row {
+      display: flex;
+      align-items: stretch;
+      width: 100%;
+    }
+    .diff-row.add { background-color: var(--color-added-line-bg); color: #aff5b4; }
+    .diff-row.del { background-color: var(--color-deleted-line-bg); color: #ffdcd7; }
+    .diff-row.context { color: var(--text-primary); }
+
+    .num-col {
+      width: 48px;
+      padding: 2px 8px;
+      text-align: right;
+      color: var(--text-muted);
+      user-select: none;
+      font-size: 11px;
+      flex-shrink: 0;
+      border-right: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .prefix-col {
+      width: 24px;
+      text-align: center;
+      user-select: none;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .code-col {
+      flex: 1;
+      padding: 2px 10px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* Modal */
     .modal-overlay {
       position: fixed;
       inset: 0;
@@ -565,13 +859,11 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
     }
     .modal-overlay.open { display: flex; }
     .modal-card {
-      background: var(--bg-secondary);
+      background: var(--bg-surface);
       border: 1px solid var(--border-subtle);
       border-radius: 10px;
-      width: 500px;
+      width: 480px;
       max-width: 92vw;
-      max-height: 85vh;
-      overflow-y: auto;
       padding: 20px;
       box-shadow: 0 10px 30px rgba(0,0,0,0.5);
     }
@@ -579,36 +871,22 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
-    .modal-title { font-weight: 700; font-size: 16px; }
+    .modal-title { font-weight: 700; font-size: 15px; }
     .modal-close {
       background: none;
       border: none;
       color: var(--text-muted);
       cursor: pointer;
       font-size: 18px;
-      padding: 4px 8px;
-      border-radius: 4px;
+      padding: 4px;
     }
-    .shortcut-table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    .shortcut-table tr {
-      border-bottom: 1px solid var(--border-subtle);
-    }
+    .shortcut-table { width: 100%; border-collapse: collapse; }
+    .shortcut-table tr { border-bottom: 1px solid var(--border-subtle); }
     .shortcut-table tr:last-child { border-bottom: none; }
-    .shortcut-table td {
-      padding: 8px 4px;
-    }
-    .shortcut-keys {
-      font-family: var(--font-mono);
-      font-size: 12px;
-      color: var(--text-primary);
-      text-align: right;
-      width: 160px;
-    }
+    .shortcut-table td { padding: 8px 4px; font-size: 13px; }
+    .shortcut-keys { text-align: right; font-family: var(--font-mono); }
     .shortcut-keys kbd {
       background: var(--bg-card);
       border: 1px solid var(--border-subtle);
@@ -617,205 +895,100 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
       font-size: 11px;
     }
 
-    /* Empty state */
+    /* Empty states */
     .empty-state {
-      padding: 48px 0;
+      padding: 48px 20px;
       text-align: center;
       color: var(--text-muted);
     }
-    .empty-icon { font-size: 32px; margin-bottom: 12px; }
+    .empty-icon { font-size: 28px; margin-bottom: 10px; }
 
-    /* Responsive Styles for Mobile and Tablet */
     @media (max-width: 768px) {
-      header {
-        padding: 10px 12px;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
-      }
-      .header-main {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        width: 100%;
-      }
-      .brand {
-        font-size: 15px;
-        min-width: 0;
-      }
-      .target-ref {
-        max-width: 130px;
-        font-size: 11px;
-      }
-      .controls-bar {
-        flex-direction: column;
-        align-items: stretch;
-        max-width: 100%;
-        gap: 8px;
-      }
-      .search-hint {
-        display: none;
-      }
-      .filter-group {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-        width: 100%;
-        padding: 2px;
-      }
-      .filter-group::-webkit-scrollbar {
-        display: none;
-      }
-      .filter-btn {
-        padding: 5px 8px;
-        font-size: 11px;
-      }
-      .key-hints {
-        display: flex;
-      }
-      .mobile-tab-bar {
-        display: flex;
-      }
-      .app-body {
-        flex-direction: column;
-      }
-      .sidebar {
-        display: none;
-        width: 100%;
-        height: 100%;
-        border-right: none;
-      }
-      .sidebar.mobile-active {
-        display: flex;
-      }
-      .content-stage {
-        display: none;
-        width: 100%;
-        height: 100%;
-        padding: 12px 14px;
-      }
-      .content-stage.mobile-active {
-        display: block;
-      }
-      .file-section {
-        margin-bottom: 20px;
-      }
-      .file-section-title {
-        font-size: 12px;
-      }
-      .symbol-header {
-        padding: 8px 10px;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 6px;
-      }
-      .symbol-title-area {
-        gap: 6px;
-        width: 100%;
-      }
-      .symbol-name {
-        font-size: 12px;
-      }
-      .signature-diff-box {
-        padding: 8px 10px;
-        font-size: 11px;
-      }
-      .diff-line {
-        font-size: 11px;
-        padding: 3px 6px;
-      }
+      header { padding: 8px 14px; height: 46px; }
+      .shortcuts-label { display: none; }
+      .target-ref { max-width: 140px; }
+      main { padding: 14px 10px 60px 10px; }
+      .sym-sig-preview { display: none; }
+      .tree-folder-row { padding-left: calc(12px + var(--depth, 0) * 10px) !important; }
+      .tree-file-row { padding-left: calc(12px + var(--depth, 0) * 10px) !important; }
+      .path-display { font-size: 12px; white-space: normal; word-break: break-all; }
+      .sym-list-row { padding: 10px 14px; }
+      .sym-name-text { font-size: 13px; }
+      .sym-type-text { font-size: 11px; }
+    }
+
+    @media (max-width: 480px) {
+      header { padding: 8px 10px; }
+      .brand-link span { font-size: 13px; }
+      .target-ref { max-width: 100px; font-size: 10px; padding: 2px 5px; }
+      .sym-total-tag { display: none; }
+      .folder-stats-pill .sym-mod-badge { display: none; }
+      .tree-stats-summary { display: none; }
+      .sym-list-row { padding: 9px 12px; gap: 4px; }
+      .sym-row-body { flex-direction: column; align-items: flex-start; gap: 2px; }
+      .sym-name-text { font-size: 13px; }
+      .sym-type-text { font-size: 11px; }
     }
   </style>
-  <link rel="stylesheet" href="/_style/symboldiff.css">
 </head>
 <body>
   <!-- Header Bar -->
   <header>
-    <div class="header-main">
-      <div class="brand">
+    <div class="header-left">
+      <a href="#/" class="brand-link" title="Return to All Files">
         <div class="brand-icon">⚡</div>
         <span>SymbolDiff</span>
-        <span class="target-ref" id="targetRef">${escapeHtml(comparisonTitle)}</span>
-      </div>
-      <div class="key-hints">
-        <div class="key-badge" onclick="toggleHelpModal()"><kbd>?</kbd> Shortcuts</div>
-      </div>
+      </a>
+      <span class="target-ref" id="targetRef">${escapeHtml(comparisonTitle)}</span>
     </div>
 
-    <!-- Search & Filter Area -->
-    <div class="controls-bar">
-      <div class="search-wrapper">
-        <span class="search-icon">🔍</span>
-        <input type="text" id="searchInput" class="search-input" placeholder="Search file paths, symbol names, or signatures..." autocomplete="off" spellcheck="false">
-        <span class="search-hint">/</span>
-      </div>
-
-      <div class="filter-group">
-        <button class="filter-btn active" data-filter="all">All <span class="filter-badge" id="countAll">0</span></button>
-        <button class="filter-btn" data-filter="sig_mod" title="Press 2">⚡ Sig Mod <span class="filter-badge" id="countSigMod">0</span></button>
-        <button class="filter-btn" data-filter="body_mod" title="Press 3">📝 Body <span class="filter-badge" id="countBodyMod">0</span></button>
-        <button class="filter-btn" data-filter="added" title="Press 4">✨ Added <span class="filter-badge" id="countAdded">0</span></button>
-        <button class="filter-btn" data-filter="deleted" title="Press 5">🔥 Deleted <span class="filter-badge" id="countDeleted">0</span></button>
-      </div>
+    <div class="header-right">
+      <button class="icon-btn" onclick="toggleHelpModal()" title="Shortcuts (?)">
+        <kbd>?</kbd><span class="shortcuts-label"> Shortcuts</span>
+      </button>
     </div>
   </header>
 
-  <!-- Mobile Segmented Tabs -->
-  <div class="mobile-tab-bar">
-    <button class="mobile-tab-btn" id="tabBtnFiles" onclick="switchMobileView('files')">
-      📄 Files <span class="mobile-tab-badge" id="mobileFileCount">0</span>
-    </button>
-    <button class="mobile-tab-btn active" id="tabBtnSymbols" onclick="switchMobileView('symbols')">
-      ⚡ Symbols <span class="mobile-tab-badge" id="mobileSymbolCount">0</span>
-    </button>
-  </div>
+  <!-- Main View Container (Re-rendered on hash change) -->
+  <main>
+    <div class="view-container" id="viewContainer"></div>
+  </main>
 
-  <!-- Main Body Split-View -->
-  <div class="app-body">
-    <!-- Left: File Tree Panel -->
-    <aside class="sidebar">
-      <div class="panel-header">
-        <span>Modified Files</span>
-        <span id="fileTotalCount" style="font-family: var(--font-mono);">0 files</span>
-      </div>
-      <div class="file-list" id="fileList"></div>
-    </aside>
-
-    <!-- Right: Symbol Content Stage -->
-    <main class="content-stage mobile-active" id="contentStage"></main>
-  </div>
-
-  <!-- Keyboard Shortcuts Help Modal -->
+  <!-- Help Modal -->
   <div class="modal-overlay" id="helpModal">
     <div class="modal-card">
       <div class="modal-header">
-        <div class="modal-title">⚡ SymbolDiff Keyboard Shortcuts</div>
+        <div class="modal-title">⚡ SymbolDiff Shortcuts</div>
         <button class="modal-close" onclick="toggleHelpModal()">✕</button>
       </div>
       <table class="shortcut-table">
         <tr>
-          <td>Navigate up / down</td>
+          <td>Navigate up / down in lists</td>
           <td class="shortcut-keys"><kbd>j</kbd> / <kbd>k</kbd> or <kbd>↓</kbd> / <kbd>↑</kbd></td>
         </tr>
         <tr>
-          <td>Switch panel (Files ↔ Symbols)</td>
-          <td class="shortcut-keys"><kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd></td>
+          <td>Open item / Toggle folder</td>
+          <td class="shortcut-keys"><kbd>Enter</kbd> / <kbd>Space</kbd> / <kbd>→</kbd></td>
         </tr>
         <tr>
-          <td>Jump to next / previous file</td>
-          <td class="shortcut-keys"><kbd>]</kbd> / <kbd>[</kbd></td>
+          <td>Collapse folder / Go back</td>
+          <td class="shortcut-keys"><kbd>←</kbd> / <kbd>Esc</kbd> / <kbd>Backspace</kbd> / <kbd>h</kbd></td>
         </tr>
         <tr>
-          <td>Focus search filter</td>
+          <td>Expand all / Collapse all folders</td>
+          <td class="shortcut-keys"><kbd>e</kbd> / <kbd>c</kbd></td>
+        </tr>
+        <tr>
+          <td>Toggle Diff / Code tab in Level 3</td>
+          <td class="shortcut-keys"><kbd>Tab</kbd> or <kbd>1</kbd> / <kbd>2</kbd></td>
+        </tr>
+        <tr>
+          <td>Copy code or diff</td>
+          <td class="shortcut-keys"><kbd>c</kbd></td>
+        </tr>
+        <tr>
+          <td>Focus filter / search</td>
           <td class="shortcut-keys"><kbd>/</kbd></td>
-        </tr>
-        <tr>
-          <td>Clear search / close modal</td>
-          <td class="shortcut-keys"><kbd>Esc</kbd></td>
-        </tr>
-        <tr>
-          <td>Filter change category</td>
-          <td class="shortcut-keys"><kbd>1</kbd> - <kbd>5</kbd></td>
         </tr>
         <tr>
           <td>Toggle this help cheat sheet</td>
@@ -826,374 +999,27 @@ export function generateHtml({ diffData, comparisonTitle, timestamp }) {
   </div>
 
   <script>
-    const diffData = ${jsonStr};
-    let activeFilter = 'all';
-    let searchQuery = '';
-    let focusedPanel = 'symbols'; // 'files' | 'symbols'
-    let selectedFileIndex = 0;
-    let selectedSymbolIndex = 0;
+    window.__SYMBOLDIFF_DATA__ = ${jsonStr};
+    window.diffData = window.__SYMBOLDIFF_DATA__;
+  </script>
+  <script>
+    (function () {
+      const serverUrl = (location.protocol === "http:" || location.protocol === "https:")
+        ? "/assets/symboldiff-app.js"
+        : "http://127.0.0.1:8787/assets/symboldiff-app.js";
 
-    // Elements
-    const fileListEl = document.getElementById('fileList');
-    const contentStageEl = document.getElementById('contentStage');
-    const searchInput = document.getElementById('searchInput');
-    const helpModal = document.getElementById('helpModal');
-
-    // Counts
-    let counts = { all: 0, sig_mod: 0, body_mod: 0, added: 0, deleted: 0 };
-
-    function calculateCounts() {
-      counts = { all: 0, sig_mod: 0, body_mod: 0, added: 0, deleted: 0 };
-      for (const file of diffData.files) {
-        for (const s of file.symbols) {
-          counts.all++;
-          if (s.status === 'SIGNATURE_MODIFIED') counts.sig_mod++;
-          else if (s.status === 'BODY_MODIFIED') counts.body_mod++;
-          else if (s.status === 'ADDED') counts.added++;
-          else if (s.status === 'DELETED') counts.deleted++;
-        }
-      }
-      document.getElementById('countAll').innerText = counts.all;
-      document.getElementById('countSigMod').innerText = counts.sig_mod;
-      document.getElementById('countBodyMod').innerText = counts.body_mod;
-      document.getElementById('countAdded').innerText = counts.added;
-      document.getElementById('countDeleted').innerText = counts.deleted;
-      document.getElementById('fileTotalCount').innerText = \`\${diffData.files.length} files\`;
-    }
-
-    function filterMatches(sym, file) {
-      if (activeFilter === 'sig_mod' && sym.status !== 'SIGNATURE_MODIFIED') return false;
-      if (activeFilter === 'body_mod' && sym.status !== 'BODY_MODIFIED') return false;
-      if (activeFilter === 'added' && sym.status !== 'ADDED') return false;
-      if (activeFilter === 'deleted' && sym.status !== 'DELETED') return false;
-
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const inName = sym.name.toLowerCase().includes(q);
-        const inSig = (sym.signature || '').toLowerCase().includes(q) || (sym.oldSignature || '').toLowerCase().includes(q);
-        const inFile = file.path.toLowerCase().includes(q);
-        return inName || inSig || inFile;
-      }
-      return true;
-    }
-
-    function switchMobileView(view) {
-      currentMobileView = view;
-      const tabFiles = document.getElementById('tabBtnFiles');
-      const tabSymbols = document.getElementById('tabBtnSymbols');
-      const sidebarEl = document.querySelector('.sidebar');
-      const contentEl = document.getElementById('contentStage');
-
-      if (view === 'files') {
-        if (tabFiles) tabFiles.classList.add('active');
-        if (tabSymbols) tabSymbols.classList.remove('active');
-        if (sidebarEl) sidebarEl.classList.add('mobile-active');
-        if (contentEl) contentEl.classList.remove('mobile-active');
-      } else {
-        if (tabFiles) tabFiles.classList.remove('active');
-        if (tabSymbols) tabSymbols.classList.add('active');
-        if (sidebarEl) sidebarEl.classList.remove('mobile-active');
-        if (contentEl) contentEl.classList.add('mobile-active');
-      }
-    }
-
-    function renderSidebar() {
-      fileListEl.innerHTML = '';
-      let matchingFileCount = 0;
-      diffData.files.forEach((file, fIdx) => {
-        const matchingSymbols = file.symbols.filter(s => filterMatches(s, file));
-        if (matchingSymbols.length === 0 && (activeFilter !== 'all' || searchQuery)) return;
-
-        matchingFileCount++;
-        const parts = file.path.split('/');
-        const fileName = parts.pop();
-        const dirPath = parts.join('/') + (parts.length ? '/' : '');
-
-        const item = document.createElement('div');
-        item.className = \`file-item \${fIdx === selectedFileIndex ? 'selected' : ''} \${focusedPanel === 'files' && fIdx === selectedFileIndex ? 'focused' : ''}\`;
-        item.id = \`file-item-\${fIdx}\`;
-        item.onclick = () => {
-          selectedFileIndex = fIdx;
-          renderSidebar();
-          switchMobileView('symbols');
-          scrollToSection(fIdx);
-        };
-
-        item.innerHTML = \`
-          <div class="file-info">
-            <span style="font-size: 13px;">📄</span>
-            <span class="file-path" title="\${escapeHtml(file.path)}">
-              <span class="file-dir">\${escapeHtml(dirPath)}</span>\${escapeHtml(fileName)}
-            </span>
-          </div>
-          <div class="file-badges">
-            <span class="file-count">\${matchingSymbols.length}</span>
-          </div>
-        \`;
-        fileListEl.appendChild(item);
-      });
-
-      const mobileFileCountEl = document.getElementById('mobileFileCount');
-      if (mobileFileCountEl) mobileFileCountEl.innerText = matchingFileCount;
-    }
-
-    function renderContent() {
-      contentStageEl.innerHTML = '';
-      let visibleSymbolIndex = 0;
-      let totalVisible = 0;
-
-      diffData.files.forEach((file, fIdx) => {
-        const matchingSymbols = file.symbols.filter(s => filterMatches(s, file));
-        if (matchingSymbols.length === 0) return;
-
-        totalVisible += matchingSymbols.length;
-
-        const section = document.createElement('div');
-        section.className = 'file-section';
-        section.id = \`section-\${fIdx}\`;
-
-        const title = document.createElement('div');
-        title.className = 'file-section-title';
-        title.innerHTML = \`<span>📂</span> <span>\${escapeHtml(file.path)}</span>\`;
-        section.appendChild(title);
-
-        matchingSymbols.forEach(sym => {
-          const cardIdx = visibleSymbolIndex++;
-          const card = document.createElement('div');
-          card.className = \`symbol-card \${focusedPanel === 'symbols' && cardIdx === selectedSymbolIndex ? 'focused' : ''}\`;
-          card.id = \`symbol-card-\${cardIdx}\`;
-
-          let statusClass = 'body_mod';
-          let statusLabel = 'Body Modified';
-          if (sym.status === 'SIGNATURE_MODIFIED') { statusClass = 'sig_mod'; statusLabel = '⚡ Sig Modified'; }
-          else if (sym.status === 'ADDED') { statusClass = 'added'; statusLabel = '✨ Added'; }
-          else if (sym.status === 'DELETED') { statusClass = 'deleted'; statusLabel = '🔥 Deleted'; }
-
-          let diffContent = '';
-          if (sym.status === 'SIGNATURE_MODIFIED' && sym.oldSignature) {
-            diffContent = \`
-              <div class="signature-diff-box">
-                <div class="diff-line old"><span class="diff-icon">-</span><span>\${escapeHtml(sym.oldSignature)}</span></div>
-                <div class="diff-line new"><span class="diff-icon">+</span><span>\${escapeHtml(sym.signature)}</span></div>
-              </div>
-            \`;
-          } else if (sym.status === 'ADDED') {
-            diffContent = \`
-              <div class="signature-diff-box">
-                <div class="diff-line new"><span class="diff-icon">+</span><span>\${escapeHtml(sym.signature)}</span></div>
-              </div>
-            \`;
-          } else if (sym.status === 'DELETED') {
-            diffContent = \`
-              <div class="signature-diff-box">
-                <div class="diff-line old"><span class="diff-icon">-</span><span>\${escapeHtml(sym.oldSignature || sym.signature)}</span></div>
-              </div>
-            \`;
-          } else {
-            diffContent = \`
-              <div class="signature-diff-box">
-                <div class="diff-line current"><span class="diff-icon"> </span><span>\${escapeHtml(sym.signature)}</span></div>
-              </div>
-            \`;
-          }
-
-          card.innerHTML = \`
-            <div class="symbol-header">
-              <div class="symbol-title-area">
-                <span class="badge badge-kind \${sym.kind}">\${sym.kind}</span>
-                <span class="symbol-name">\${escapeHtml(sym.name)}</span>
-                <span class="badge badge-status \${statusClass}">\${statusLabel}</span>
-              </div>
-              <div class="symbol-meta">
-                <span class="line-number">L\${sym.startLine}\${sym.endLine ? \`-L\${sym.endLine}\` : ''}</span>
-              </div>
-            </div>
-            \${diffContent}
-          \`;
-
-          card.onclick = () => {
-            selectedSymbolIndex = cardIdx;
-            focusedPanel = 'symbols';
-            renderSidebar();
-            renderContent();
-          };
-
-          section.appendChild(card);
-        });
-
-        contentStageEl.appendChild(section);
-      });
-
-      const mobileSymbolCountEl = document.getElementById('mobileSymbolCount');
-      if (mobileSymbolCountEl) mobileSymbolCountEl.innerText = totalVisible;
-
-      if (totalVisible === 0) {
-        contentStageEl.innerHTML = \`
-          <div class="empty-state">
-            <div class="empty-icon">🔍</div>
-            <h3>No symbols found</h3>
-            <p>Try clearing your filter or adjusting your search query.</p>
-          </div>
-        \`;
-      }
-    }
-
-    function scrollToSection(fIdx) {
-      requestAnimationFrame(() => {
-        const el = document.getElementById(\`section-\${fIdx}\`);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-    }
-
-    function scrollToFocusedSymbol() {
-      const el = document.getElementById(\`symbol-card-\${selectedSymbolIndex}\`);
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-
-    function toggleHelpModal() {
-      helpModal.classList.toggle('open');
-    }
-
-    // Filter Buttons
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.onclick = () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        activeFilter = btn.dataset.filter;
-        selectedSymbolIndex = 0;
-        renderSidebar();
-        renderContent();
+      const scriptElement = document.createElement("script");
+      scriptElement.src = serverUrl;
+      scriptElement.onerror = function () {
+        loadFallback();
       };
-    });
+      document.head.appendChild(scriptElement);
 
-    // Live Search
-    searchInput.oninput = (e) => {
-      searchQuery = e.target.value;
-      selectedSymbolIndex = 0;
-      renderSidebar();
-      renderContent();
-    };
-
-    // Keyboard Shortcuts Listener
-    document.addEventListener('keydown', (e) => {
-      // If typing in search input
-      if (document.activeElement === searchInput) {
-        if (e.key === 'Escape') {
-          searchInput.blur();
-          searchQuery = '';
-          searchInput.value = '';
-          renderSidebar();
-          renderContent();
-        } else if (e.key === 'Enter') {
-          searchInput.blur();
-          focusedPanel = 'symbols';
-          renderSidebar();
-          renderContent();
-        }
-        return;
+      function loadFallback() {
+        if (window.__SYMBOLDIFF_INITIALIZED__) return;
+        ${getClientScript()}
       }
-
-      if (e.key === '?') {
-        e.preventDefault();
-        toggleHelpModal();
-        return;
-      }
-
-      if (e.key === 'Escape') {
-        if (helpModal.classList.contains('open')) {
-          toggleHelpModal();
-          return;
-        }
-        searchQuery = '';
-        searchInput.value = '';
-        activeFilter = 'all';
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
-        renderSidebar();
-        renderContent();
-        return;
-      }
-
-      if (e.key === '/') {
-        e.preventDefault();
-        searchInput.focus();
-        searchInput.select();
-        return;
-      }
-
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        focusedPanel = focusedPanel === 'files' ? 'symbols' : 'files';
-        renderSidebar();
-        renderContent();
-        return;
-      }
-
-      // Quick category filters: 1 - 5
-      if (['1', '2', '3', '4', '5'].includes(e.key)) {
-        e.preventDefault();
-        const filters = ['all', 'sig_mod', 'body_mod', 'added', 'deleted'];
-        const target = filters[parseInt(e.key, 10) - 1];
-        activeFilter = target;
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === target));
-        selectedSymbolIndex = 0;
-        renderSidebar();
-        renderContent();
-        return;
-      }
-
-      // Navigation: j/k or ArrowDown/ArrowUp
-      if (e.key === 'j' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        if (focusedPanel === 'files') {
-          selectedFileIndex = Math.min(diffData.files.length - 1, selectedFileIndex + 1);
-          renderSidebar();
-          scrollToSection(selectedFileIndex);
-        } else {
-          selectedSymbolIndex++;
-          renderContent();
-          scrollToFocusedSymbol();
-        }
-      } else if (e.key === 'k' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        if (focusedPanel === 'files') {
-          selectedFileIndex = Math.max(0, selectedFileIndex - 1);
-          renderSidebar();
-          scrollToSection(selectedFileIndex);
-        } else {
-          selectedSymbolIndex = Math.max(0, selectedSymbolIndex - 1);
-          renderContent();
-          scrollToFocusedSymbol();
-        }
-      }
-
-      // Next / Previous file shortcuts: [ and ]
-      if (e.key === ']') {
-        e.preventDefault();
-        selectedFileIndex = Math.min(diffData.files.length - 1, selectedFileIndex + 1);
-        renderSidebar();
-        scrollToSection(selectedFileIndex);
-      } else if (e.key === '[') {
-        e.preventDefault();
-        selectedFileIndex = Math.max(0, selectedFileIndex - 1);
-        renderSidebar();
-        scrollToSection(selectedFileIndex);
-      }
-    });
-
-    function escapeHtml(str) {
-      if (!str) return '';
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-    }
-
-    // Initial render
-    calculateCounts();
-    renderSidebar();
-    renderContent();
+    })();
   </script>
 </body>
 </html>`;
@@ -1208,3 +1034,79 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+export function buildFileTree(filesList) {
+  const root = {
+    name: '',
+    path: '',
+    dirs: new Map(),
+    files: [],
+    totalFiles: 0,
+    symbolsAdded: 0,
+    symbolsDeleted: 0,
+    symbolsModified: 0,
+  };
+
+  for (const item of filesList) {
+    const parts = item.file.path.split('/');
+    const fileName = parts.pop();
+    let curr = root;
+    let acc = '';
+    for (const d of parts) {
+      acc = acc ? acc + '/' + d : d;
+      if (!curr.dirs.has(d)) {
+        curr.dirs.set(d, {
+          name: d,
+          path: acc,
+          dirs: new Map(),
+          files: [],
+          totalFiles: 0,
+          symbolsAdded: 0,
+          symbolsDeleted: 0,
+          symbolsModified: 0,
+        });
+      }
+      curr = curr.dirs.get(d);
+    }
+    curr.files.push(item);
+  }
+
+  function compact(node) {
+    for (const [name, child] of Array.from(node.dirs.entries())) {
+      compact(child);
+      if (child.files.length === 0 && child.dirs.size === 1) {
+        const onlyChild = child.dirs.values().next().value;
+        const combinedName = child.name + '/' + onlyChild.name;
+        node.dirs.delete(name);
+        onlyChild.name = combinedName;
+        node.dirs.set(combinedName, onlyChild);
+      }
+    }
+  }
+  compact(root);
+
+  function aggregate(node) {
+    let count = node.files.length;
+    let add = 0, del = 0, mod = 0;
+    for (const item of node.files) {
+      add += (item.file.symbolsAdded || 0);
+      del += (item.file.symbolsDeleted || 0);
+      mod += (item.file.symbolsModified || 0);
+    }
+    for (const child of node.dirs.values()) {
+      aggregate(child);
+      count += child.totalFiles;
+      add += child.symbolsAdded;
+      del += child.symbolsDeleted;
+      mod += child.symbolsModified;
+    }
+    node.totalFiles = count;
+    node.symbolsAdded = add;
+    node.symbolsDeleted = del;
+    node.symbolsModified = mod;
+  }
+  aggregate(root);
+
+  return root;
+}
+
