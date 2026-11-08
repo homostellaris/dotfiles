@@ -468,6 +468,13 @@ export class BuildOrchestrator {
       return "NOT_GENERATED";
     }
 
+    if (this.approveFlag || this.state?.plan_approved) {
+      if (this.state) {
+        this.state.plan_approved = true;
+      }
+      return "APPROVED";
+    }
+
     const transcriptFile = this.findLatestTranscriptForSpec(specId);
     if (transcriptFile && fs.existsSync(transcriptFile)) {
       const feedbackOrApproval = this.inspectTranscriptForApproval(transcriptFile);
@@ -477,10 +484,6 @@ export class BuildOrchestrator {
       if (feedbackOrApproval === "FEEDBACK") {
         return "FEEDBACK_RECEIVED";
       }
-    }
-
-    if (this.state && this.state.plan_approved) {
-      return "APPROVED";
     }
 
     return "PENDING_APPROVAL";
@@ -500,9 +503,17 @@ export class BuildOrchestrator {
 
     for (const folder of folders) {
       const planFile = path.join(folder, `${specId}.html`);
+      if (fs.existsSync(planFile)) {
+        return path.join(folder, ".system_generated", "logs", "transcript.jsonl");
+      }
       const transcript = path.join(folder, ".system_generated", "logs", "transcript.jsonl");
-      if (fs.existsSync(planFile) || fs.existsSync(transcript)) {
-        return transcript;
+      if (fs.existsSync(transcript)) {
+        try {
+          const content = fs.readFileSync(transcript, "utf-8");
+          if (content.includes(`impl-${specId}`) || content.includes(`planner-${specId}`)) {
+            return transcript;
+          }
+        } catch {}
       }
     }
     return null;
