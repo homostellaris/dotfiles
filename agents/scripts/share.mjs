@@ -1279,52 +1279,52 @@ function updateIndexHtml() {
   <link rel="shortcut icon" href="/tasks/favicon.ico">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0d0e15;
-      --surface: #151722;
-      --border: #2a2d3d;
-      --text: #f4f4f5;
-      --text-muted: #8a8f9f;
-      --accent: #4deeea;
-      --font-sans: 'Silkscreen', 'JetBrains Mono', system-ui, monospace;
-      --font-heading: 'Press Start 2P', monospace;
+      --bg: #090d16;
+      --surface: #0f172a;
+      --border: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0 !important; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background: var(--bg);
       color: var(--text);
       font-family: var(--font-sans);
       font-size: 14px;
+      line-height: 1.5;
       min-height: 100vh;
       display: flex;
       justify-content: center;
       padding: 32px 16px 64px;
-      image-rendering: pixelated;
     }
     .wrapper {
       width: 100%;
       max-width: 680px;
     }
     .controls {
-      margin-bottom: 24px;
+      margin-bottom: 20px;
     }
     .filter-input {
       width: 100%;
       background: var(--surface);
-      border: 2px solid var(--border);
-      box-shadow: 3px 3px 0px #000;
+      border: 1px solid var(--border);
+      border-radius: 6px;
       padding: 10px 14px;
       color: var(--text);
       font-family: var(--font-sans);
-      font-size: 13px;
+      font-size: 14px;
       outline: none;
-      transition: border-color 0.1s ease;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
     .filter-input:focus {
       border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
     }
     .filter-input::placeholder {
       color: var(--text-muted);
@@ -1332,40 +1332,35 @@ function updateIndexHtml() {
     .group-bar {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-top: 12px;
+      gap: 6px;
+      margin-top: 10px;
       flex-wrap: wrap;
     }
     .group-label {
-      font-family: var(--font-heading);
-      font-size: 10px;
+      font-size: 12px;
       color: var(--text-muted);
       margin-right: 2px;
     }
     .group-btn {
       background: var(--surface);
-      border: 2px solid #000;
-      box-shadow: 2px 2px 0px #000;
+      border: 1px solid var(--border);
       color: var(--text-muted);
-      padding: 5px 10px;
-      font-size: 10px;
-      font-family: var(--font-heading);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: var(--font-sans);
       cursor: pointer;
-      transition: transform 0.05s ease, box-shadow 0.05s ease;
+      transition: all 0.1s ease;
     }
     .group-btn:hover {
       color: var(--text);
-      border-color: var(--border);
-    }
-    .group-btn:active {
-      transform: translate(2px, 2px);
-      box-shadow: 0 0 0;
+      border-color: #334155;
     }
     .group-btn.active {
-      background: var(--accent);
-      color: #000;
-      border-color: #000;
-      font-weight: 700;
+      background: #1e293b;
+      color: #fff;
+      border-color: var(--accent);
+      font-weight: 600;
     }
     .link-list {
       list-style: none;
@@ -1373,58 +1368,59 @@ function updateIndexHtml() {
       padding: 0;
     }
     .link-item {
-      border-bottom: 2px solid var(--border);
+      border-bottom: 1px solid var(--border);
     }
     .bare-link {
       color: var(--accent);
       text-decoration: none;
       display: block;
-      padding: 12px 0;
+      padding: 11px 0;
       font-size: 14px;
-      line-height: 1.5;
+      font-weight: 500;
+      line-height: 1.4;
       word-break: break-word;
       transition: color 0.1s ease;
     }
     .bare-link:hover {
       text-decoration: underline;
-      color: #ffe600;
     }
     .group-section {
-      margin-bottom: 28px;
+      margin-bottom: 24px;
     }
     .group-header {
-      font-family: var(--font-heading);
-      font-size: 11px;
-      letter-spacing: -0.02em;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
       color: var(--text-muted);
-      padding-bottom: 8px;
-      border-bottom: 2px solid var(--border);
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
       margin-bottom: 4px;
     }
     .empty {
       padding: 32px 0;
       color: var(--text-muted);
-      font-family: var(--font-heading);
-      font-size: 11px;
+      font-size: 13px;
     }
   </style>
 </head>
 <body>
   <div class="wrapper">
     <div style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center;">
-      <a href="/" style="display: inline-flex; align-items: center; gap: 8px; background: var(--surface); border: 2px solid var(--border); color: var(--text-muted); padding: 8px 12px; font-family: var(--font-heading); font-size: 10px; text-decoration: none; box-shadow: 2px 2px 0 #000; transition: transform 0.05s ease;">
+      <a href="/" style="display: inline-flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted); padding: 6px 10px; font-size: 12px; text-decoration: none; transition: all 0.15s ease;">
         <span>←</span>
-        <span>PORTAL</span>
+        <span>Portal</span>
       </a>
     </div>
 
     <div class="controls">
-      <input type="text" id="filterInput" class="filter-input" placeholder="SEARCH TASKS..." autofocus autocomplete="off">
+      <input type="text" id="filterInput" class="filter-input" placeholder="Search tasks..." autofocus autocomplete="off">
       <div class="group-bar">
-        <span class="group-label">GROUP:</span>
-        <button class="group-btn" data-group="recent" onclick="setGrouping('recent')">LAST UPDATED</button>
-        <button class="group-btn" data-group="repo" onclick="setGrouping('repo')">REPO</button>
-        <button class="group-btn" data-group="status" onclick="setGrouping('status')">STATUS</button>
+        <span class="group-label">Group:</span>
+        <button class="group-btn" data-group="recent" onclick="setGrouping('recent')">Last Updated</button>
+        <button class="group-btn" data-group="repo" onclick="setGrouping('repo')">Repo</button>
+        <button class="group-btn" data-group="status" onclick="setGrouping('status')">Status</button>
       </div>
     </div>
 
