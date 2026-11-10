@@ -139,7 +139,7 @@ async function handleDevServersApi(req, res) {
           command: cmd.slice(0, 100),
           isOpen,
           localUrl: `http://localhost:${port}`,
-          tailscaleUrl: `http://omarchy.tail29c7da.ts.net:${port}`,
+          tailscaleUrl: `https://omarchy.tail29c7da.ts.net:${port}`,
         };
         if (project === 'starfocus') result.starfocus.push(serverInfo);
         else if (project === 'banerry') result.banerry.push(serverInfo);
@@ -156,7 +156,7 @@ async function handleDevServersApi(req, res) {
         worktree: 'main',
         isOpen: true,
         localUrl: 'http://localhost:6600',
-        tailscaleUrl: 'http://omarchy.tail29c7da.ts.net:6600',
+        tailscaleUrl: 'https://omarchy.tail29c7da.ts.net:6600',
       });
     }
     const is6603 = await checkPortListening(6603);
@@ -167,7 +167,7 @@ async function handleDevServersApi(req, res) {
         worktree: 'legacy-6603',
         isOpen: true,
         localUrl: 'http://localhost:6603',
-        tailscaleUrl: 'http://omarchy.tail29c7da.ts.net:6603',
+        tailscaleUrl: 'https://omarchy.tail29c7da.ts.net:6603',
       });
     }
     const is6700 = await checkPortListening(6700);
@@ -178,7 +178,7 @@ async function handleDevServersApi(req, res) {
         worktree: 'main',
         isOpen: true,
         localUrl: 'http://localhost:6700',
-        tailscaleUrl: 'http://omarchy.tail29c7da.ts.net:6700',
+        tailscaleUrl: 'https://omarchy.tail29c7da.ts.net:6700',
       });
     }
   } catch (err) {

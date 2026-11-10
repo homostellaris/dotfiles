@@ -1573,6 +1573,8 @@ function generateProjectPageHtml(projectName, items = []) {
         const desc = document.getElementById("devServerDesc");
         const actions = document.getElementById("devServerActions");
         const host = window.location.hostname || "localhost";
+        const isHttps = window.location.protocol === "https:" || host.includes(".ts.net");
+        const proto = isHttps ? "https:" : "http:";
 
         if (running.length > 0) {
           badge.className = "status-badge live";
@@ -1582,27 +1584,33 @@ function generateProjectPageHtml(projectName, items = []) {
             const s = running[0];
             const port = s.port || defaultPort;
             const wt = s.worktree && s.worktree !== "main" && s.worktree !== "default" ? " (" + s.worktree + ")" : "";
+            const targetUrl = (host.includes(".ts.net") && s.tailscaleUrl) ? s.tailscaleUrl : (proto + "//" + host + ":" + port);
             desc.innerHTML = "<strong style=\\"color: #4ade80;\\">Active on port " + port + wt + "</strong>";
-            actions.innerHTML = '<a href="http://' + host + ':' + port + '" target="_blank" class="btn btn-primary" style="background: #22c55e; color: #000;"><span>Open Dev Server (' + port + ')</span><span>➜</span></a>';
+            actions.innerHTML = '<a href="' + targetUrl + '" target="_blank" class="btn btn-primary" style="background: #22c55e; color: #000;"><span>Open Dev Server (' + port + ')</span><span>➜</span></a>';
           } else {
             desc.innerHTML = "<strong style=\\"color: #4ade80;\\">" + running.length + " dev servers active</strong>";
-            actions.innerHTML = running.map(s => '<a href="http://' + host + ':' + s.port + '" target="_blank" class="btn btn-primary" style="margin-bottom: 6px; background: #22c55e; color: #000;"><span>Open ' + (s.worktree || "Server") + ' (:' + s.port + ')</span><span>➜</span></a>').join("");
+            actions.innerHTML = running.map(s => {
+              const targetUrl = (host.includes(".ts.net") && s.tailscaleUrl) ? s.tailscaleUrl : (proto + "//" + host + ":" + s.port);
+              return '<a href="' + targetUrl + '" target="_blank" class="btn btn-primary" style="margin-bottom: 6px; background: #22c55e; color: #000;"><span>Open ' + (s.worktree || "Server") + ' (:' + s.port + ')</span><span>➜</span></a>';
+            }).join("");
           }
         } else {
           badge.className = "status-badge offline";
           badge.innerHTML = "<span>Offline</span>";
           desc.innerHTML = "Default port " + defaultPort + " • <code>bun run dev</code>";
-          actions.innerHTML = '<a href="http://' + host + ':' + defaultPort + '" target="_blank" class="btn btn-secondary"><span>Try Port ' + defaultPort + '</span><span>➜</span></a>';
+          actions.innerHTML = '<a href="' + proto + '//' + host + ':' + defaultPort + '" target="_blank" class="btn btn-secondary"><span>Try Port ' + defaultPort + '</span><span>➜</span></a>';
         }
       } catch (err) {
         const host = window.location.hostname || "localhost";
+        const isHttps = window.location.protocol === "https:" || host.includes(".ts.net");
+        const proto = isHttps ? "https:" : "http:";
         const badge = document.getElementById("devServerBadge");
         if (badge) {
           badge.className = "status-badge offline";
           badge.innerHTML = "<span>Default Port</span>";
         }
         const btn = document.getElementById("devServerBtn");
-        if (btn) btn.href = "http://" + host + ":" + defaultPort;
+        if (btn) btn.href = proto + "//" + host + ":" + defaultPort;
       }
     }
 
