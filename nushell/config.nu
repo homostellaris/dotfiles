@@ -30,11 +30,10 @@ if $nu.os-info.name == "macos" {
   path add "/opt/homebrew/opt/rustup/bin"
 }
 
-# Prefer VS Code when present (macOS), else nvim (headless/sandbox).
-let editor = (if (which code | is-not-empty) { 'code' } else { 'nvim' })
-$env.config.buffer_editor = $editor
+$env.config.buffer_editor = 'nvim'
 $env.config.show_banner = false
-$env.EDITOR = $editor # Set for GH CLI
+$env.EDITOR = 'nvim'
+$env.VISUAL = 'nvim'
 
 # Aliases --------------------------------------------------------------------------------------------------------------
 alias deploy = gh pr comment --body '/deploy'
