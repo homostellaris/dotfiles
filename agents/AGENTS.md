@@ -3,18 +3,28 @@
 - Don't use code comments unless its to explain a non-obvious choice about the implementation.
 - Don't abbreviate variable names.
 - Follow the stepdown approach to writing code.
-- Detailed guidelines: [Coding Style](rules/style.md)
+
+## TypeScript
+
+- Keep props types inline unless they need to be exported.
 
 # Testing
 
 - Put happy path tests first, then sad tests, then bad tests.
 - Don't use the word 'mock' in variable names as its obvious from the context of the test.
 - Don't use top-level describe statements when already obvious from the filename.
-- Detailed testing & Cypress guidelines: [Testing Guide](rules/testing.md)
+
+## Cypress E2E
+
+Cypress tests should be organised such that they mirror the route they are testing. So in a NextJS application the route `/blog/[slug]` would be tested by `cypress/e2e/blog/slug.cy.ts`.
 
 # Workflow
 
-- Detailed workflow: [Workflow Guide](rules/workflow.md)
+- **Main Worktree Reserved for User**: The root repository directory (main worktree) is reserved exclusively for the user. Agents must never make direct or uncommitted edits in the root worktree.
+- **Dedicated Agent Worktrees**: Agents must always create and work inside an isolated worktree for each task (e.g. `<repo>/.worktrees/<spec_or_task_id>`).
+- **Local Verification**: Verify changes locally inside the worktree while uncommitted — run local test suites (e.g. `bun test`) and test/preview interactively via Tailscale on the worktree's port.
+- **Merge & Push to Default Branch**: Once verified and approved by the user, commit following Gitmoji conventions, merge the worktree into the default branch (`main` or `master`), push directly to `origin`, and clean up the worktree. No GitHub PRs are created.
+- **Minimal CI**: Nothing runs in CI unless strictly required for deployment (CI test pipelines are redundant with local and Tailscale verification).
 
 # Agent Skills
 

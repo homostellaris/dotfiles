@@ -7,16 +7,6 @@ for rules_dir in "$HOME/.agents/rules" "$HOME/.claude/rules" "$HOME/.gemini/conf
   find "$rules_dir" -xtype l -delete 2>/dev/null || true
 done
 
-# Link all rules
-for rule_path in "$DIR"/rules/*; do
-  if [ -f "$rule_path" ]; then
-    rule_name=$(basename "$rule_path")
-    ln -nfs "$rule_path" "$HOME/.agents/rules/$rule_name"
-    ln -nfs "$rule_path" "$HOME/.claude/rules/$rule_name"
-    ln -nfs "$rule_path" "$HOME/.gemini/config/rules/$rule_name"
-  fi
-done
-
 # Symlink global rules for Antigravity/Gemini and Claude Code
 mkdir -p "$HOME/.gemini/config"
 ln -nfs "$DIR/AGENTS.md" "$HOME/.gemini/config/AGENTS.md"
