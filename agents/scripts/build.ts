@@ -1304,7 +1304,7 @@ export class BuildOrchestrator {
       `⚠️ [Plan Review Required] Technical plan generated for '${this.spec.title}'.\n` +
       `🔗 Plan Dashboard: ${dashboardUrl}\n` +
       `📄 Plan File: ${markdownPlanPath}\n` +
-      `Run 'build ${this.spec.identifier} --approve-plan' or 'build ls' to approve/revise.`;
+      `Run 'build --spec ${this.spec.identifier} --approve-plan' or 'build ls' to approve/revise.`;
     this.sendOpenclawNotification(notificationMessage);
 
     console.log(`✅ Plan published to dashboard: ${dashboardUrl}`);
@@ -1317,8 +1317,8 @@ export class BuildOrchestrator {
     console.log("⏸️  Technical plan is waiting for your review:");
     console.log(`🔗 ${this.state?.visual_plan_url || `${getTailscaleBaseUrl()}/`}`);
     console.log(`📄 Markdown Plan: ${this.state?.plan_file || "N/A"}`);
-    console.log(`👉 Approve:  build ${this.spec?.identifier} --approve-plan`);
-    console.log(`👉 Feedback: build ${this.spec?.identifier} --feedback "<comments>" (or run 'build ls')`);
+    console.log(`👉 Approve:  build --spec ${this.spec?.identifier} --approve-plan`);
+    console.log(`👉 Feedback: build --spec ${this.spec?.identifier} --feedback "<comments>" (or run 'build ls')`);
   }
 
   handleSetupWorktree(): number {
@@ -1621,18 +1621,18 @@ export class BuildOrchestrator {
     console.log(`🌐 Local Dev Server:   ${localUrl}`);
     console.log(`📱 Tailscale Dev URL:  ${tailscaleUrl}`);
     console.log(`✨ Vercel Toolbar:     Active for visual comments and annotations in-browser`);
-    console.log(`👉 Send feedback:      build ${this.spec.identifier} --feedback "<your comments>"`);
+    console.log(`👉 Send feedback:      build --spec ${this.spec.identifier} --feedback "<your comments>"`);
     console.log(`👉 Or manage via:      build ls`);
     console.log(`\n✅ Once satisfied, approve via:`);
-    console.log(`   - Run: build ${this.spec.identifier} --approve-review`);
+    console.log(`   - Run: build --spec ${this.spec.identifier} --approve-review`);
     console.log("==================================================\n");
 
     const notificationMessage =
       `⏸️ [Human Review Required] '${this.spec.title}' is ready for review!\n` +
       `🌐 Local: ${localUrl}\n` +
       `📱 Tailscale: ${tailscaleUrl}\n` +
-      `✨ Use Vercel Toolbar for comments, 'build ${this.spec.identifier} --feedback "..."', or 'build ls'.\n` +
-      `Run 'build ${this.spec.identifier} --approve-review' to merge.`;
+      `✨ Use Vercel Toolbar for comments, 'build --spec ${this.spec.identifier} --feedback "..."', or 'build ls'.\n` +
+      `Run 'build --spec ${this.spec.identifier} --approve-review' to merge.`;
     this.sendOpenclawNotification(notificationMessage);
   }
 
@@ -2369,6 +2369,7 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     args: rawArgs,
     options: {
       prompt: { type: "string", short: "p" },
+      spec: { type: "string", short: "s" },
       effort: { type: "string", short: "e" },
       cwd: { type: "string", short: "C" },
       "spec-id": { type: "string" },
@@ -2395,19 +2396,19 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     (arg) => arg !== "status" && arg !== "ls" && arg !== "rm"
   );
 
-  let specId = values["spec-id"];
+  let specId = values.spec || values["spec-id"];
   const inlinePrompt = values.prompt?.trim() || undefined;
 
   if (inlinePrompt && (specId || remainingPositionals.length > 0)) {
-    console.error("❌ Error: Cannot combine -p/--prompt with --spec-id or positional spec ID.");
+    console.error("❌ Error: Cannot combine -p/--prompt with --spec or positional arguments.");
     process.exit(1);
   }
 
-  if (!specId && !inlinePrompt && remainingPositionals.length === 1) {
+  if (isRemoveCommand && !specId && remainingPositionals.length === 1) {
     specId = remainingPositionals[0];
-  } else if (!inlinePrompt && remainingPositionals.length > 1) {
+  } else if (!isListCommand && !isRemoveCommand && !isStatusCommand && remainingPositionals.length > 0) {
     console.error(
-      "❌ Error: Positional prompt arguments are no longer supported. Use -p \"<prompt>\" instead."
+      "❌ Error: Positional arguments are not supported. Use --spec <id> or -p \"<prompt>\" instead."
     );
     process.exit(1);
   }
@@ -2438,17 +2439,17 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
 
   if (values.help || (!isListCommand && !isRemoveCommand && !inlinePrompt && !specId)) {
     console.log('Usage: build -p "<prompt>" [options]');
-    console.log("       build <spec-id> [options]");
+    console.log("       build --spec <id> [options]");
     console.log("       build ls [--all] [--json]");
     console.log("       build rm <spec-id>");
-    console.log("       build status");
+    console.log("       build status [--spec <id>]");
     console.log("\nAgentic coding workflow build orchestrator powered by Antigravity and herdr-core.");
     console.log("\nOptions:");
     console.log("  -p, --prompt <text>   Inline feature prompt to plan and build.");
+    console.log("  -s, --spec <id>       Pre-written spec identifier, slug, or file path.");
     console.log("  -e, --effort <1|2|3>  Workflow effort: 1 (single agent, default), 2 (impl + review), 3 (plan + impl + review).");
     console.log("  -C, --cwd <dir>       Override working directory for project/repo resolution.");
-    console.log("  --spec-id <id>        Pre-written spec identifier, slug, or file path.");
-    console.log("  --project <project>   Override inferred target project (e.g. banerry, starfocus).");
+    console.log("  --project <project>   Override target project name.");
     console.log("  --approve-plan        Approve technical plan gate.");
     console.log("  --approve-review      Approve human review gate and merge/push.");
     console.log("  --approve             Approve current gate (plan or review).");
@@ -2458,7 +2459,7 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     console.log("  --dry-run             Inspect external state and planned actions without side effects.");
     console.log("  --status              Display current build lifecycle state.");
     console.log("  -h, --help            Show this help message and exit.");
-    process.exit(values.help ? 0 : 1);
+    process.exit(values.help || rawArgs.length === 0 ? 0 : 1);
   }
 
   let approveScope: ApproveScope | undefined;

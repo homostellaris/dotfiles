@@ -41,18 +41,18 @@ describe("BuildOrchestrator (build.ts)", () => {
   });
 
   it("parses scoped approval and feedback flags", () => {
-    const planApproval = parseArguments(["canvas-section_y2vtpcom", "--approve-plan"]);
+    const planApproval = parseArguments(["--spec", "canvas-section_y2vtpcom", "--approve-plan"]);
     expect(planApproval.approveScope).toBe("plan");
 
-    const reviewApproval = parseArguments(["canvas-section_y2vtpcom", "--approve-review"]);
+    const reviewApproval = parseArguments(["--spec", "canvas-section_y2vtpcom", "--approve-review"]);
     expect(reviewApproval.approveScope).toBe("review");
 
-    const feedbackRun = parseArguments(["canvas-section_y2vtpcom", "--feedback", "Make buttons larger"]);
+    const feedbackRun = parseArguments(["--spec", "canvas-section_y2vtpcom", "--feedback", "Make buttons larger"]);
     expect(feedbackRun.feedback).toBe("Make buttons larger");
   });
 
-  it("parses --spec-id for pre-written specs", () => {
-    const parsed = parseArguments(["--spec-id", "canvas-section_y2vtpcom", "--status"]);
+  it("parses --spec for pre-written specs", () => {
+    const parsed = parseArguments(["--spec", "canvas-section_y2vtpcom", "--status"]);
     expect(parsed.specId).toBe("canvas-section_y2vtpcom");
     expect(parsed.prompt).toBeUndefined();
     expect(parsed.dryRun).toBe(true);
@@ -304,8 +304,8 @@ Here is the specification details.
     expect(predictedPort).toBeLessThanOrEqual(6625);
   });
 
-  it("parses status command positionally and flags statusOnly", () => {
-    const parsed = parseArguments(["canvas-section_y2vtpcom", "status"]);
+  it("parses status command with --spec and flags statusOnly", () => {
+    const parsed = parseArguments(["status", "--spec", "canvas-section_y2vtpcom"]);
     expect(parsed.specId).toBe("canvas-section_y2vtpcom");
     expect(parsed.statusOnly).toBe(true);
     expect(parsed.dryRun).toBe(true);
