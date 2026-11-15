@@ -227,6 +227,7 @@ export class BuildOrchestrator {
   public statusOnly: boolean;
   public feedbackText?: string;
   public effort?: BuildEffort;
+  public workingDirectory?: string;
   public lockPath?: string;
   public spec: SpecMetadata | null = null;
   public state: BuildState | null = null;
@@ -239,7 +240,8 @@ export class BuildOrchestrator {
     approveScope: ApproveScope | boolean = false,
     statusOnly: boolean = false,
     feedbackText?: string,
-    effort?: BuildEffort
+    effort?: BuildEffort,
+    workingDirectory?: string
   ) {
     this.specQuery = specQuery;
     this.projectOverride = projectOverride;
@@ -250,6 +252,7 @@ export class BuildOrchestrator {
     this.statusOnly = statusOnly;
     this.feedbackText = feedbackText;
     this.effort = effort;
+    this.workingDirectory = workingDirectory ? path.resolve(workingDirectory) : undefined;
   }
 
   async execute(): Promise<number> {
@@ -348,22 +351,35 @@ export class BuildOrchestrator {
     return baseSlug || "inline-task";
   }
 
-  inferTargetProjectFromCwd(): string | null {
-    const toplevel = runCommand(["git", "rev-parse", "--show-toplevel"], {
-      cwd: process.cwd(),
+  resolveProjectFromWorkingDirectory(
+    workingDirectory: string = this.workingDirectory || process.cwd()
+  ): {
+    project: string;
+    repoDir: string;
+  } {
+    const commonDirResult = runCommand(["git", "rev-parse", "--git-common-dir"], {
+      cwd: workingDirectory,
       capture: true,
     });
-    if (toplevel.status === 0 && toplevel.stdout.trim()) {
-      const resolvedRoot = path.resolve(toplevel.stdout.trim());
-      if (resolvedRoot.startsWith(REPOSITORIES_DIRECTORY + path.sep)) {
-        const relative = resolvedRoot.slice(REPOSITORIES_DIRECTORY.length + 1);
-        const projectName = relative.split(path.sep)[0];
-        if (projectName) {
-          return projectName;
-        }
+    if (commonDirResult.status === 0 && commonDirResult.stdout.trim()) {
+      const resolvedCommonDir = path.resolve(workingDirectory, commonDirResult.stdout.trim());
+      if (path.basename(resolvedCommonDir) === ".git") {
+        const repoDir = path.dirname(resolvedCommonDir);
+        return { project: path.basename(repoDir) || "default", repoDir };
       }
     }
-    return null;
+
+    const toplevelResult = runCommand(["git", "rev-parse", "--show-toplevel"], {
+      cwd: workingDirectory,
+      capture: true,
+    });
+    if (toplevelResult.status === 0 && toplevelResult.stdout.trim()) {
+      const repoDir = path.resolve(toplevelResult.stdout.trim());
+      return { project: path.basename(repoDir) || "default", repoDir };
+    }
+
+    const resolvedCwd = path.resolve(workingDirectory);
+    return { project: path.basename(resolvedCwd) || "default", repoDir: resolvedCwd };
   }
 
   createInlineSpec(promptText: string): SpecMetadata {
@@ -371,11 +387,7 @@ export class BuildOrchestrator {
     const identifier = `${slug}_${generateShortId()}`;
     const firstLine = promptText.trim().split("\n")[0].trim();
     const title = firstLine.length > 72 ? `${firstLine.slice(0, 69)}...` : firstLine;
-    const lowerPrompt = promptText.toLowerCase();
-    const inferredProject =
-      this.projectOverride ||
-      (lowerPrompt.includes("banerry") ? "banerry" : this.inferTargetProjectFromCwd()) ||
-      this.inferTargetProject(identifier, promptText, undefined);
+    const project = this.projectOverride || this.resolveProjectFromWorkingDirectory().project;
 
     return {
       identifier,
@@ -383,7 +395,7 @@ export class BuildOrchestrator {
       title,
       content: promptText.trim(),
       prompt: promptText.trim(),
-      targetProject: inferredProject,
+      targetProject: project,
     };
   }
 
@@ -416,7 +428,7 @@ export class BuildOrchestrator {
         title: stateData.spec_title || stateData.spec_id,
         content: stateData.prompt || "",
         prompt: stateData.prompt,
-        targetProject: stateData.project || "starfocus",
+        targetProject: stateData.project || this.resolveProjectFromWorkingDirectory().project,
       };
     } catch {
       return null;
@@ -486,7 +498,8 @@ export class BuildOrchestrator {
     const starRole = frontmatter.starRole as string | undefined;
     const starPoints = frontmatter.starPoints ? Number(frontmatter.starPoints) : undefined;
 
-    const inferredProject = this.inferTargetProject(path.basename(chosenPath), content, starRole);
+    const targetProject =
+      this.projectOverride || this.resolveProjectFromWorkingDirectory().project;
 
     return {
       identifier: filenameStem,
@@ -495,7 +508,7 @@ export class BuildOrchestrator {
       starRole,
       starPoints,
       content: body,
-      targetProject: inferredProject,
+      targetProject,
     };
   }
 
@@ -526,14 +539,6 @@ export class BuildOrchestrator {
     return { frontmatter, body };
   }
 
-  inferTargetProject(filename: string, content: string, role?: string): string {
-    const lowerContent = `${filename} ${content} ${role || ""}`.toLowerCase();
-    if (lowerContent.includes("banerry")) {
-      return "banerry";
-    }
-    return "starfocus";
-  }
-
   getActiveEffort(): BuildEffort {
     return this.effort || this.state?.effort || 1;
   }
@@ -544,14 +549,20 @@ export class BuildOrchestrator {
     }
     const stateFile = path.join(STATE_DIRECTORY, `${spec.identifier}.json`);
 
-    const repoDir = path.join(REPOSITORIES_DIRECTORY, spec.targetProject);
-    const worktreeDir = path.join(repoDir, ".worktrees", spec.identifier);
-    const branchName = spec.identifier;
+    const resolvedFromCwd = this.resolveProjectFromWorkingDirectory();
+    const defaultRepoDir = this.projectOverride
+      ? path.join(REPOSITORIES_DIRECTORY, this.projectOverride)
+      : resolvedFromCwd.repoDir;
 
     if (fs.existsSync(stateFile)) {
       try {
         const raw = fs.readFileSync(stateFile, "utf-8");
         const data = JSON.parse(raw);
+        const repoDir = this.projectOverride
+          ? path.join(REPOSITORIES_DIRECTORY, this.projectOverride)
+          : data.repo_dir || defaultRepoDir;
+        const worktreeDir = path.join(repoDir, ".worktrees", spec.identifier);
+        const branchName = spec.identifier;
         const state: BuildState = {
           ...data,
           effort: this.effort || data.effort || 1,
@@ -563,6 +574,9 @@ export class BuildOrchestrator {
       } catch {}
     }
 
+    const worktreeDir = path.join(defaultRepoDir, ".worktrees", spec.identifier);
+    const branchName = spec.identifier;
+
     const initialState: BuildState = {
       spec_id: spec.identifier,
       spec_path: spec.filePath,
@@ -570,7 +584,7 @@ export class BuildOrchestrator {
       effort: this.effort || 1,
       prompt: spec.prompt,
       project: spec.targetProject,
-      repo_dir: repoDir,
+      repo_dir: defaultRepoDir,
       worktree_dir: worktreeDir,
       branch_name: branchName,
       stage: "DISCOVER_SPEC",
@@ -2356,6 +2370,7 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     options: {
       prompt: { type: "string", short: "p" },
       effort: { type: "string", short: "e" },
+      cwd: { type: "string", short: "C" },
       "spec-id": { type: "string" },
       project: { type: "string" },
       "dry-run": { type: "boolean", default: false },
@@ -2431,6 +2446,7 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     console.log("\nOptions:");
     console.log("  -p, --prompt <text>   Inline feature prompt to plan and build.");
     console.log("  -e, --effort <1|2|3>  Workflow effort: 1 (single agent, default), 2 (impl + review), 3 (plan + impl + review).");
+    console.log("  -C, --cwd <dir>       Override working directory for project/repo resolution.");
     console.log("  --spec-id <id>        Pre-written spec identifier, slug, or file path.");
     console.log("  --project <project>   Override inferred target project (e.g. banerry, starfocus).");
     console.log("  --approve-plan        Approve technical plan gate.");
@@ -2465,10 +2481,17 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     effort = Number(values.effort) as BuildEffort;
   }
 
+  const resolvedCwd = values.cwd ? path.resolve(values.cwd) : undefined;
+  if (resolvedCwd && !fs.existsSync(resolvedCwd)) {
+    console.error(`❌ Error: Working directory does not exist: ${resolvedCwd}`);
+    process.exit(1);
+  }
+
   return {
     command: isListCommand ? ("ls" as const) : isRemoveCommand ? ("rm" as const) : ("run" as const),
     prompt: inlinePrompt,
     effort,
+    cwd: resolvedCwd,
     specId: specId || "",
     project: values.project,
     approve: Boolean(approveScope),
@@ -2502,7 +2525,8 @@ async function main() {
     parsedArguments.approveScope ?? false,
     parsedArguments.statusOnly,
     parsedArguments.feedback,
-    parsedArguments.effort
+    parsedArguments.effort,
+    parsedArguments.cwd
   );
   const exitCode = await orchestrator.execute();
   process.exit(exitCode);

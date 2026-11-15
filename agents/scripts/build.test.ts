@@ -58,23 +58,23 @@ describe("BuildOrchestrator (build.ts)", () => {
     expect(parsed.dryRun).toBe(true);
   });
 
-  it("creates an inline spec with slug_id format, no spec file, and prompt in state", () => {
+  it("creates an inline spec with slug_id format, no spec file, and working-directory project", () => {
     const inlineOrchestrator = new BuildOrchestrator(
       "",
       undefined,
       true,
-      "Add Banerry OAuth callback handler for Google login"
+      "Add OAuth callback handler for Google login"
     );
     const spec = inlineOrchestrator.createInlineSpec(
-      "Add Banerry OAuth callback handler for Google login"
+      "Add OAuth callback handler for Google login"
     );
-    expect(spec.identifier).toMatch(/^add-banerry-oauth-callback-handler-for-google_[a-z0-9]{8}$/);
+    expect(spec.identifier).toMatch(/^add-oauth-callback-handler-for-google-login_[a-z0-9]{8}$/);
     expect(spec.filePath).toBe("");
-    expect(spec.title).toBe("Add Banerry OAuth callback handler for Google login");
-    expect(spec.targetProject).toBe("banerry");
-    expect(spec.prompt).toBe("Add Banerry OAuth callback handler for Google login");
+    expect(spec.title).toBe("Add OAuth callback handler for Google login");
+    expect(spec.targetProject).toBe("dotfiles");
+    expect(spec.prompt).toBe("Add OAuth callback handler for Google login");
     const state = inlineOrchestrator.loadOrInitializeState(spec);
-    expect(state.prompt).toBe("Add Banerry OAuth callback handler for Google login");
+    expect(state.prompt).toBe("Add OAuth callback handler for Google login");
   });
 
   it("parses YAML frontmatter and body accurately", () => {
@@ -103,10 +103,17 @@ Here is the specification details.
     expect(body).toBe(rawMarkdown);
   });
 
-  it("infers target project accurately", () => {
-    expect(orchestrator.inferTargetProject("banerry-login.md", "some spec", undefined)).toBe("banerry");
-    expect(orchestrator.inferTargetProject("auth.md", "Need banerry OAuth fix", undefined)).toBe("banerry");
-    expect(orchestrator.inferTargetProject("general-task.md", "normal task content", undefined)).toBe("starfocus");
+  it("resolves project and repo root from working directory and --cwd override", () => {
+    const resolved = orchestrator.resolveProjectFromWorkingDirectory(process.cwd());
+    expect(resolved.project).toBe("dotfiles");
+    expect(resolved.repoDir).toBe(path.join(os.homedir(), "code", "homostellaris", "dotfiles"));
+
+    const parsedCwd = parseArguments(["-p", "Add widget", "--cwd", "/tmp"]);
+    expect(parsedCwd.cwd).toBe("/tmp");
+
+    const cwdOrchestrator = new BuildOrchestrator("", undefined, true, "Add widget", false, false, undefined, 1, "/tmp");
+    const spec = cwdOrchestrator.createInlineSpec("Add widget");
+    expect(spec.targetProject).toBe("tmp");
   });
 
   it("discovers existing spec in obsidian todos", () => {
