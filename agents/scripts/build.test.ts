@@ -4,7 +4,9 @@ import path from "node:path";
 import os from "node:os";
 import {
   BuildOrchestrator,
+  MODEL_TIERS,
   STAGE_MODELS,
+  getStageModel,
   parseArguments,
   formatHerdrTerminalName,
   listBuildsSnapshot,
@@ -373,6 +375,67 @@ Here is the specification details.
   it("lists outstanding builds read-only via listBuildsSnapshot", () => {
     const snapshot = listBuildsSnapshot(false);
     expect(Array.isArray(snapshot)).toBe(true);
+  });
+
+  it("parses --effort flag and routes stages by effort 1, 2, and 3", () => {
+    const effortTwoArgs = parseArguments(["-p", "Fix typo in header", "--effort", "2"]);
+    expect(effortTwoArgs.effort).toBe(2);
+
+    const effortOneArgs = parseArguments(["-p", "Fix typo in header", "-e", "1"]);
+    expect(effortOneArgs.effort).toBe(1);
+
+    const effortTwoOrchestrator = new BuildOrchestrator(
+      "",
+      "starfocus",
+      true,
+      "Fix typo in header",
+      false,
+      false,
+      undefined,
+      2
+    );
+    const specTwo = effortTwoOrchestrator.createInlineSpec("Fix typo in header");
+    effortTwoOrchestrator.spec = specTwo;
+    effortTwoOrchestrator.state = effortTwoOrchestrator.loadOrInitializeState(specTwo);
+    effortTwoOrchestrator.isWorktreeInitialized = () => false;
+
+    expect(effortTwoOrchestrator.state.effort).toBe(2);
+    expect(effortTwoOrchestrator.determineExternalState()).toBe("SETUP_WORKTREE");
+
+    const effortOneOrchestrator = new BuildOrchestrator(
+      "",
+      "starfocus",
+      true,
+      "Fix typo in header",
+      false,
+      false,
+      undefined,
+      1
+    );
+    const specOne = effortOneOrchestrator.createInlineSpec("Fix typo in header");
+    effortOneOrchestrator.spec = specOne;
+    effortOneOrchestrator.state = effortOneOrchestrator.loadOrInitializeState(specOne);
+    effortOneOrchestrator.isWorktreeInitialized = () => true;
+    effortOneOrchestrator.getCommitsAheadCount = () => 1;
+    effortOneOrchestrator.hasUncommittedChanges = () => false;
+    effortOneOrchestrator.runLocalTestGate = () => true;
+
+    expect(effortOneOrchestrator.determineExternalState()).toBe("MERGE_AND_PUSH");
+  });
+
+  it("resolves stage models via MODEL_TIERS across effort levels 1, 2, and 3", () => {
+    expect(getStageModel("planner", 3)).toBe(MODEL_TIERS.capable);
+    expect(getStageModel("implementer", 3)).toBe(MODEL_TIERS.capable);
+    expect(getStageModel("repair", 3)).toBe(MODEL_TIERS.fast);
+    expect(getStageModel("verifier", 3)).toBe(MODEL_TIERS.reviewerCapable);
+
+    expect(getStageModel("implementer", 2)).toBe(MODEL_TIERS.fast);
+    expect(getStageModel("repair", 2)).toBe(MODEL_TIERS.fast);
+    expect(getStageModel("commentResolver", 2)).toBe(MODEL_TIERS.fast);
+    expect(getStageModel("verifier", 2)).toBe(MODEL_TIERS.reviewerFast);
+
+    expect(getStageModel("implementer", 1)).toBe(MODEL_TIERS.fast);
+    expect(getStageModel("verifier", 1)).toBe(MODEL_TIERS.fast);
   });
 
   it("generates https Tailscale dev URL and http local dev URL", () => {

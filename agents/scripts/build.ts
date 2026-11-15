@@ -26,16 +26,49 @@ const REPOSITORIES_DIRECTORY = path.join(os.homedir(), "code", "homostellaris");
 
 export type ApproveScope = "plan" | "review" | "any";
 export type TerminalRole = "plan" | "impl" | "repair" | "ci" | "feedback" | "verify";
+export type BuildEffort = 1 | 2 | 3;
+
+export const MODEL_TIERS = {
+  fast: "gemini-3.8-flash-high",
+  capable: "gemini-4-argon-high",
+  reviewerFast: "claude-sonnet-5-5-high",
+  reviewerCapable: "claude-opus-5-5-high",
+} as const;
+
+export type ModelTier = keyof typeof MODEL_TIERS;
+
+export const STAGE_MODEL_TIERS = {
+  planner: "capable",
+  architect: "capable",
+  implementer: "capable",
+  repair: "fast",
+  ciRepair: "fast",
+  commentResolver: "fast",
+  verifier: "reviewerCapable",
+} as const satisfies Record<string, ModelTier>;
 
 export const STAGE_MODELS = {
-  planner: "gemini-4-argon-high",
-  architect: "gemini-4-argon-high",
-  implementer: "gemini-4-argon-high",
-  repair: "gemini-3.8-flash-high",
-  ciRepair: "gemini-3.8-flash-high",
-  commentResolver: "gemini-3.8-flash-high",
-  verifier: "claude-opus-5-5-high",
+  planner: MODEL_TIERS[STAGE_MODEL_TIERS.planner],
+  architect: MODEL_TIERS[STAGE_MODEL_TIERS.architect],
+  implementer: MODEL_TIERS[STAGE_MODEL_TIERS.implementer],
+  repair: MODEL_TIERS[STAGE_MODEL_TIERS.repair],
+  ciRepair: MODEL_TIERS[STAGE_MODEL_TIERS.ciRepair],
+  commentResolver: MODEL_TIERS[STAGE_MODEL_TIERS.commentResolver],
+  verifier: MODEL_TIERS[STAGE_MODEL_TIERS.verifier],
 } as const;
+
+export function getStageModel(
+  stage: keyof typeof STAGE_MODEL_TIERS,
+  effort: BuildEffort = 3
+): string {
+  if (effort === 1) {
+    return MODEL_TIERS.fast;
+  }
+  if (effort === 2) {
+    return stage === "verifier" ? MODEL_TIERS.reviewerFast : MODEL_TIERS.fast;
+  }
+  return MODEL_TIERS[STAGE_MODEL_TIERS[stage]];
+}
 
 export const PROJECT_PORT_POOLS: Record<string, { main: number; start: number; end: number }> = {
   starfocus: { main: 6600, start: 6601, end: 6625 },
@@ -115,6 +148,7 @@ export interface BuildState {
   spec_id: string;
   spec_path: string;
   spec_title: string;
+  effort?: BuildEffort;
   prompt?: string;
   pending_feedback?: string;
   project: string;
@@ -192,6 +226,7 @@ export class BuildOrchestrator {
   public approveScope?: ApproveScope;
   public statusOnly: boolean;
   public feedbackText?: string;
+  public effort?: BuildEffort;
   public lockPath?: string;
   public spec: SpecMetadata | null = null;
   public state: BuildState | null = null;
@@ -203,7 +238,8 @@ export class BuildOrchestrator {
     inlinePrompt?: string,
     approveScope: ApproveScope | boolean = false,
     statusOnly: boolean = false,
-    feedbackText?: string
+    feedbackText?: string,
+    effort?: BuildEffort
   ) {
     this.specQuery = specQuery;
     this.projectOverride = projectOverride;
@@ -213,6 +249,7 @@ export class BuildOrchestrator {
       approveScope === true ? "any" : approveScope === false ? undefined : approveScope;
     this.statusOnly = statusOnly;
     this.feedbackText = feedbackText;
+    this.effort = effort;
   }
 
   async execute(): Promise<number> {
@@ -497,6 +534,10 @@ export class BuildOrchestrator {
     return "starfocus";
   }
 
+  getActiveEffort(): BuildEffort {
+    return this.effort || this.state?.effort || 3;
+  }
+
   loadOrInitializeState(spec: SpecMetadata): BuildState {
     if (!fs.existsSync(STATE_DIRECTORY)) {
       fs.mkdirSync(STATE_DIRECTORY, { recursive: true });
@@ -513,6 +554,7 @@ export class BuildOrchestrator {
         const data = JSON.parse(raw);
         const state: BuildState = {
           ...data,
+          effort: this.effort || data.effort || 3,
           repo_dir: repoDir,
           worktree_dir: worktreeDir,
           branch_name: branchName,
@@ -525,6 +567,7 @@ export class BuildOrchestrator {
       spec_id: spec.identifier,
       spec_path: spec.filePath,
       spec_title: spec.title,
+      effort: this.effort || 3,
       prompt: spec.prompt,
       project: spec.targetProject,
       repo_dir: repoDir,
@@ -666,15 +709,18 @@ export class BuildOrchestrator {
   determineExternalState(): string {
     if (!this.spec || !this.state) return "DISCOVER_SPEC";
 
-    const planStatus = this.checkPlanApprovalStatus(this.spec.identifier);
-    if (planStatus === "FEEDBACK_RECEIVED") {
-      return "REPLAN_WITH_FEEDBACK";
-    }
-    if (planStatus === "PENDING_APPROVAL") {
-      return "AWAIT_PLAN_APPROVAL";
-    }
-    if (planStatus === "NOT_GENERATED") {
-      return "GENERATE_PLAN";
+    const activeEffort = this.getActiveEffort();
+    if (activeEffort >= 3) {
+      const planStatus = this.checkPlanApprovalStatus(this.spec.identifier);
+      if (planStatus === "FEEDBACK_RECEIVED") {
+        return "REPLAN_WITH_FEEDBACK";
+      }
+      if (planStatus === "PENDING_APPROVAL") {
+        return "AWAIT_PLAN_APPROVAL";
+      }
+      if (planStatus === "NOT_GENERATED") {
+        return "GENERATE_PLAN";
+      }
     }
 
     if (!this.isWorktreeInitialized(this.state.worktree_dir)) {
@@ -694,12 +740,14 @@ export class BuildOrchestrator {
       return "IMPLEMENT_AND_FIX_LOCAL";
     }
 
-    const humanReviewStatus = this.checkHumanReviewStatus();
-    if (humanReviewStatus === "FEEDBACK_RECEIVED") {
-      return "RESOLVE_FEEDBACK";
-    }
-    if (humanReviewStatus !== "APPROVED") {
-      return "AWAIT_HUMAN_REVIEW";
+    if (activeEffort >= 2) {
+      const humanReviewStatus = this.checkHumanReviewStatus();
+      if (humanReviewStatus === "FEEDBACK_RECEIVED") {
+        return "RESOLVE_FEEDBACK";
+      }
+      if (humanReviewStatus !== "APPROVED") {
+        return "AWAIT_HUMAN_REVIEW";
+      }
     }
 
     if (this.state.deployed) {
@@ -1222,7 +1270,7 @@ export class BuildOrchestrator {
       "plan",
       plannerPrompt,
       this.state.repo_dir,
-      STAGE_MODELS.planner
+      getStageModel("planner", this.getActiveEffort())
     );
 
     if (!plannerSuccess || !fs.existsSync(markdownPlanPath)) {
@@ -1300,14 +1348,16 @@ export class BuildOrchestrator {
     const terminalName = formatHerdrTerminalName(this.spec.identifier, "impl");
     const planPath =
       this.state.plan_file || path.join(STATE_DIRECTORY, "plans", `${this.spec.identifier}.md`);
+    const hasPlan = fs.existsSync(planPath);
     const specInstruction =
       this.spec.filePath && fs.existsSync(this.spec.filePath)
         ? `Implement the feature specified in '${this.spec.filePath}'`
-        : `Implement the feature:\n\n${this.spec.content || this.spec.title}\n\n`;
+        : `Implement the task:\n\n${this.spec.content || this.spec.title}\n\n`;
+    const planInstruction = hasPlan ? ` following the technical plan at '${planPath}'.` : ".";
 
     console.log(`🛠️  Spawning Implementer Agent '${terminalName}' in worktree: ${this.state.worktree_dir}`);
     const prompt =
-      `${specInstruction} following the technical plan at '${planPath}'. ` +
+      `${specInstruction}${planInstruction} ` +
       `Write unit and component tests first (TDD), then build the components and functions. ` +
       `Ensure all local tests pass via 'bun test'.`;
 
@@ -1315,7 +1365,7 @@ export class BuildOrchestrator {
       "impl",
       prompt,
       this.state.worktree_dir,
-      STAGE_MODELS.implementer
+      getStageModel("implementer", this.getActiveEffort())
     );
 
     if (!success) {
@@ -1333,7 +1383,7 @@ export class BuildOrchestrator {
         "repair",
         repairPrompt,
         this.state.worktree_dir,
-        STAGE_MODELS.repair
+        getStageModel("repair", this.getActiveEffort())
       );
     }
 
@@ -1508,7 +1558,7 @@ export class BuildOrchestrator {
       "ci",
       repairPrompt,
       this.state.worktree_dir,
-      STAGE_MODELS.ciRepair
+      getStageModel("ciRepair", this.getActiveEffort())
     );
 
     if (this.hasUncommittedChanges(this.state.worktree_dir)) {
@@ -1593,17 +1643,18 @@ export class BuildOrchestrator {
 
     const planPath =
       this.state.plan_file || path.join(STATE_DIRECTORY, "plans", `${this.spec.identifier}.md`);
+    const planReference = fs.existsSync(planPath) ? ` (plan at '${planPath}')` : "";
     const combinedFeedback = feedbackParts.join("\n\n");
     const fixPrompt = combinedFeedback
-      ? `The human reviewer provided feedback on '${this.spec.title}' (plan at '${planPath}'):\n\n${combinedFeedback}\n\n` +
+      ? `The human reviewer provided feedback on '${this.spec.title}'${planReference}:\n\n${combinedFeedback}\n\n` +
         `Please address the comments, update components and tests accordingly, and ensure tests pass.`
-      : `Please review recent comments and feedback from the human reviewer for '${this.spec.title}' (plan at '${planPath}'), implement requested adjustments, and verify tests pass.`;
+      : `Please review recent comments and feedback from the human reviewer for '${this.spec.title}'${planReference}, implement requested adjustments, and verify tests pass.`;
 
     await this.runAgentInHerdrCore(
       "feedback",
       fixPrompt,
       this.state.worktree_dir,
-      STAGE_MODELS.commentResolver
+      getStageModel("commentResolver", this.getActiveEffort())
     );
 
     if (this.hasUncommittedChanges(this.state.worktree_dir)) {
@@ -1654,7 +1705,7 @@ export class BuildOrchestrator {
       "verify",
       verifierPrompt,
       this.state.worktree_dir,
-      STAGE_MODELS.verifier
+      getStageModel("verifier", this.getActiveEffort())
     );
 
     const statusRes = runCommand(["git", "status", "--porcelain"], {
@@ -2048,6 +2099,7 @@ export class BuildOrchestrator {
     console.log("\n--- 📋 Dry Run Summary ---");
     console.log(`Spec ID:        ${this.spec?.identifier}`);
     console.log(`Spec Title:     ${this.spec?.title}`);
+    console.log(`Effort:         ${this.getActiveEffort()}`);
     console.log(`Spec Path:      ${this.spec?.filePath}`);
     console.log(`Target Project: ${this.spec?.targetProject}`);
     console.log(`Target Repo:    ${this.state?.repo_dir}`);
@@ -2083,6 +2135,7 @@ export interface BuildListEntry {
   spec_id: string;
   spec_title: string;
   project: string;
+  effort: BuildEffort;
   stage: string;
   running_pid: number | null;
   live_terminals: Array<{ id: string; name?: string; state?: string }>;
@@ -2144,6 +2197,7 @@ export function listBuildsSnapshot(includeAll: boolean = false): BuildListEntry[
         spec_id: stateData.spec_id,
         spec_title: stateData.spec_title || stateData.spec_id,
         project: stateData.project || "starfocus",
+        effort: stateData.effort || 3,
         stage: stateData.stage || "DISCOVER_SPEC",
         running_pid: runningPid,
         live_terminals: liveTerminals,
@@ -2186,7 +2240,7 @@ async function runBuildList(includeAll: boolean, jsonOutput: boolean): Promise<n
           ? `running (PID ${entry.running_pid})`
           : "idle";
     console.log(
-      `  [${index + 1}] ${entry.spec_id}  |  ${entry.project}  |  ${entry.stage}  |  ${liveSummary}`
+      `  [${index + 1}] ${entry.spec_id}  |  ${entry.project}  |  effort ${entry.effort}  |  ${entry.stage}  |  ${liveSummary}`
     );
   });
   console.log("");
@@ -2301,6 +2355,7 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     args: rawArgs,
     options: {
       prompt: { type: "string", short: "p" },
+      effort: { type: "string", short: "e" },
       "spec-id": { type: "string" },
       project: { type: "string" },
       "dry-run": { type: "boolean", default: false },
@@ -2375,6 +2430,7 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     console.log("\nAgentic coding workflow build orchestrator powered by Antigravity and herdr-core.");
     console.log("\nOptions:");
     console.log("  -p, --prompt <text>   Inline feature prompt to plan and build.");
+    console.log("  -e, --effort <1|2|3>  Workflow effort: 1 (single agent), 2 (impl + review), 3 (plan + impl + review, default).");
     console.log("  --spec-id <id>        Pre-written spec identifier, slug, or file path.");
     console.log("  --project <project>   Override inferred target project (e.g. banerry, starfocus).");
     console.log("  --approve-plan        Approve technical plan gate.");
@@ -2398,9 +2454,21 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     approveScope = "any";
   }
 
+  let effort: BuildEffort | undefined;
+  if (values.effort !== undefined) {
+    if (values.effort !== "1" && values.effort !== "2" && values.effort !== "3") {
+      console.error(
+        `❌ Error: Invalid effort '${values.effort}'. Expected 1, 2, or 3.`
+      );
+      process.exit(1);
+    }
+    effort = Number(values.effort) as BuildEffort;
+  }
+
   return {
     command: isListCommand ? ("ls" as const) : isRemoveCommand ? ("rm" as const) : ("run" as const),
     prompt: inlinePrompt,
+    effort,
     specId: specId || "",
     project: values.project,
     approve: Boolean(approveScope),
@@ -2433,7 +2501,8 @@ async function main() {
     parsedArguments.prompt,
     parsedArguments.approveScope ?? false,
     parsedArguments.statusOnly,
-    parsedArguments.feedback
+    parsedArguments.feedback,
+    parsedArguments.effort
   );
   const exitCode = await orchestrator.execute();
   process.exit(exitCode);
