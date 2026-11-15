@@ -29,7 +29,7 @@ export type TerminalRole = "plan" | "impl" | "repair" | "ci" | "feedback" | "ver
 export type BuildEffort = 1 | 2 | 3;
 
 export const MODEL_TIERS = {
-  fast: "gemini-3.8-flash-high",
+  fast: "gemini-4-hydrogen-high",
   capable: "gemini-4-argon-high",
   reviewerFast: "claude-sonnet-5-5-high",
   reviewerCapable: "claude-opus-5-5-high",

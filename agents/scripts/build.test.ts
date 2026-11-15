@@ -15,13 +15,13 @@ import {
 describe("BuildOrchestrator (build.ts)", () => {
   const orchestrator = new BuildOrchestrator("dummy-query");
 
-  it("configures stage models with Argon High for planning and implementation, Flash 3.8 for repairs, and Claude Opus for verification", () => {
+  it("configures stage models with Argon High for planning and implementation, Hydrogen High for repairs, and Claude Opus for verification", () => {
     expect(STAGE_MODELS.planner).toBe("gemini-4-argon-high");
     expect(STAGE_MODELS.architect).toBe("gemini-4-argon-high");
     expect(STAGE_MODELS.implementer).toBe("gemini-4-argon-high");
-    expect(STAGE_MODELS.repair).toBe("gemini-3.8-flash-high");
-    expect(STAGE_MODELS.ciRepair).toBe("gemini-3.8-flash-high");
-    expect(STAGE_MODELS.commentResolver).toBe("gemini-3.8-flash-high");
+    expect(STAGE_MODELS.repair).toBe("gemini-4-hydrogen-high");
+    expect(STAGE_MODELS.ciRepair).toBe("gemini-4-hydrogen-high");
+    expect(STAGE_MODELS.commentResolver).toBe("gemini-4-hydrogen-high");
     expect(STAGE_MODELS.verifier).toBe("claude-opus-5-5-high");
   });
 
