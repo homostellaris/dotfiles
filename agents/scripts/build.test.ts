@@ -1,7 +1,14 @@
 import { describe, expect, it } from "bun:test";
+import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { BuildOrchestrator, STAGE_MODELS, parseArguments, formatHerdrAgentName } from "./build.ts";
+import {
+  BuildOrchestrator,
+  STAGE_MODELS,
+  parseArguments,
+  formatHerdrTerminalName,
+  listBuildsSnapshot,
+} from "./build.ts";
 
 describe("BuildOrchestrator (build.ts)", () => {
   const orchestrator = new BuildOrchestrator("dummy-query");
@@ -16,12 +23,30 @@ describe("BuildOrchestrator (build.ts)", () => {
     expect(STAGE_MODELS.verifier).toBe("claude-opus-5-5-high");
   });
 
-  it("parses positional argument as an inline prompt", () => {
-    const parsed = parseArguments(["Add a dark mode toggle to settings", "--project", "banerry", "--dry-run"]);
+  it("parses -p argument as an inline prompt", () => {
+    const parsed = parseArguments(["-p", "Add a dark mode toggle to settings", "--project", "banerry", "--dry-run"]);
     expect(parsed.prompt).toBe("Add a dark mode toggle to settings");
     expect(parsed.specId).toBe("");
     expect(parsed.project).toBe("banerry");
     expect(parsed.dryRun).toBe(true);
+  });
+
+  it("parses build ls command with --all and --json", () => {
+    const parsed = parseArguments(["ls", "--all", "--json"]);
+    expect(parsed.command).toBe("ls");
+    expect(parsed.includeAll).toBe(true);
+    expect(parsed.jsonOutput).toBe(true);
+  });
+
+  it("parses scoped approval and feedback flags", () => {
+    const planApproval = parseArguments(["canvas-section_y2vtpcom", "--approve-plan"]);
+    expect(planApproval.approveScope).toBe("plan");
+
+    const reviewApproval = parseArguments(["canvas-section_y2vtpcom", "--approve-review"]);
+    expect(reviewApproval.approveScope).toBe("review");
+
+    const feedbackRun = parseArguments(["canvas-section_y2vtpcom", "--feedback", "Make buttons larger"]);
+    expect(feedbackRun.feedback).toBe("Make buttons larger");
   });
 
   it("parses --spec-id for pre-written specs", () => {
@@ -31,7 +56,7 @@ describe("BuildOrchestrator (build.ts)", () => {
     expect(parsed.dryRun).toBe(true);
   });
 
-  it("creates an inline spec with deterministic slug and inferred project", () => {
+  it("creates an inline spec with slug_id format, no spec file, and prompt in state", () => {
     const inlineOrchestrator = new BuildOrchestrator(
       "",
       undefined,
@@ -41,10 +66,13 @@ describe("BuildOrchestrator (build.ts)", () => {
     const spec = inlineOrchestrator.createInlineSpec(
       "Add Banerry OAuth callback handler for Google login"
     );
-    expect(spec.identifier).toBe("add-banerry-oauth-callback-handler-for-google");
+    expect(spec.identifier).toMatch(/^add-banerry-oauth-callback-handler-for-google_[a-z0-9]{8}$/);
+    expect(spec.filePath).toBe("");
     expect(spec.title).toBe("Add Banerry OAuth callback handler for Google login");
     expect(spec.targetProject).toBe("banerry");
-    expect(spec.content).toBe("Add Banerry OAuth callback handler for Google login");
+    expect(spec.prompt).toBe("Add Banerry OAuth callback handler for Google login");
+    const state = inlineOrchestrator.loadOrInitializeState(spec);
+    expect(state.prompt).toBe("Add Banerry OAuth callback handler for Google login");
   });
 
   it("parses YAML frontmatter and body accurately", () => {
@@ -297,31 +325,54 @@ Here is the specification details.
     expect(lockOrchestrator.lockPath).toBeUndefined();
   });
 
-  it("formats Herdr agent names within 32 character limit preserving identifier suffix", () => {
-    const agentName = formatHerdrAgentName(
-      "impl",
-      "procedural-game-friendly-visual-assets_bp2zucom"
+  it("formats herdr-core terminal names as <slug>_<id>_<role> within 32 characters", () => {
+    const terminalName = formatHerdrTerminalName(
+      "procedural-game-friendly-visual-assets_bp2zucom",
+      "impl"
     );
-    expect(agentName.length).toBeLessThanOrEqual(32);
-    expect(agentName).toBe("impl-procedural-game-fr_bp2zucom");
-    expect(/^[a-z][a-z0-9_-]{0,31}$/.test(agentName)).toBe(true);
+    expect(terminalName.length).toBeLessThanOrEqual(32);
+    expect(terminalName).toBe("procedural-game-fr_bp2zucom_impl");
+    expect(/^[a-z0-9][a-z0-9_-]{0,31}$/.test(terminalName)).toBe(true);
+
+    const noIdName = formatHerdrTerminalName("custom-feature-spec", "plan");
+    expect(noIdName).toBe("custom-feature-spec_plan");
   });
 
-  it("determines dedicated Herdr session name from spec identifier", () => {
-    const orchestrator = new BuildOrchestrator("canvas-section_y2vtpcom");
-    orchestrator.spec = {
+  it("scopes --approve to one gate without auto-approving human review", () => {
+    const scopedOrchestrator = new BuildOrchestrator(
+      "canvas-section_y2vtpcom",
+      undefined,
+      true,
+      undefined,
+      "any"
+    );
+    scopedOrchestrator.spec = {
       identifier: "canvas-section_y2vtpcom",
       title: "Canvas Section",
       filePath: "/fake/path.md",
       content: "",
-      project: "starfocus",
-      metadata: {},
       targetProject: "starfocus",
     };
-    expect(orchestrator.getHerdrSessionName()).toBe("canvas-section_y2vtpcom");
+    const temporaryPlanPath = path.join(os.homedir(), ".local", "share", "agent-builds", "plans", "canvas-section_y2vtpcom.md");
+    const planDir = path.dirname(temporaryPlanPath);
+    const existed = fs.existsSync(temporaryPlanPath);
+    if (!existed) {
+      fs.mkdirSync(planDir, { recursive: true });
+      fs.writeFileSync(temporaryPlanPath, "# Plan", "utf-8");
+    }
+    try {
+      expect(scopedOrchestrator.checkPlanApprovalStatus("canvas-section_y2vtpcom")).toBe("APPROVED");
+      expect(scopedOrchestrator.checkHumanReviewStatus()).toBe("PENDING");
+    } finally {
+      if (!existed && fs.existsSync(temporaryPlanPath)) {
+        fs.unlinkSync(temporaryPlanPath);
+      }
+    }
+  });
 
-    const fallbackOrchestrator = new BuildOrchestrator("");
-    expect(fallbackOrchestrator.getHerdrSessionName()).toBe("default");
+  it("lists outstanding builds read-only via listBuildsSnapshot", () => {
+    const snapshot = listBuildsSnapshot(false);
+    expect(Array.isArray(snapshot)).toBe(true);
   });
 
   it("generates https Tailscale dev URL and http local dev URL", () => {

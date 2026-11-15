@@ -3,16 +3,15 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import child_process from "node:child_process";
+import readline from "node:readline";
 import { parseArgs } from "node:util";
 
 const STATE_DIRECTORY = path.join(os.homedir(), ".local", "share", "agent-builds");
-const INLINE_SPEC_DIRECTORY = path.join(STATE_DIRECTORY, "specs");
 
 const POSSIBLE_SPEC_DIRS = [
   process.env.TODOS_DIR,
   path.join(os.homedir(), "Work", "Reality Sculptor", "todos"),
   path.join(os.homedir(), "obsidian", "reality-sculptor", "todos"),
-  INLINE_SPEC_DIRECTORY,
 ].filter(Boolean) as string[];
 
 const POSSIBLE_VAULT_DIRS = [
@@ -24,7 +23,9 @@ const POSSIBLE_VAULT_DIRS = [
 const SPEC_DIRECTORY = POSSIBLE_SPEC_DIRS.find((d) => fs.existsSync(d)) || POSSIBLE_SPEC_DIRS[0];
 const VAULT_DIRECTORY = POSSIBLE_VAULT_DIRS.find((d) => fs.existsSync(d)) || POSSIBLE_VAULT_DIRS[0];
 const REPOSITORIES_DIRECTORY = path.join(os.homedir(), "code", "homostellaris");
-const ANTIGRAVITY_APP_DATA = path.join(os.homedir(), ".gemini", "antigravity-cli");
+
+export type ApproveScope = "plan" | "review" | "any";
+export type TerminalRole = "plan" | "impl" | "repair" | "ci" | "feedback" | "verify";
 
 export const STAGE_MODELS = {
   planner: "gemini-4-argon-high",
@@ -42,21 +43,45 @@ export const PROJECT_PORT_POOLS: Record<string, { main: number; start: number; e
   default: { main: 6800, start: 6801, end: 6825 },
 };
 
-export function formatHerdrAgentName(prefix: string, identifier: string): string {
-  const cleanPrefix = prefix.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const maxSuffixAndSlugLength = 32 - cleanPrefix.length - 1;
+export function formatHerdrTerminalName(identifier: string, role: string): string {
+  const cleanRole = role.toLowerCase().replace(/[^a-z0-9]/g, "") || "agent";
+  const idMatch = identifier.match(/^(.+)_([a-z0-9]{8})$/i);
 
-  const parts = identifier.split("_");
-  let slug = parts[0];
-  const suffix = parts.length > 1 ? `_${parts[parts.length - 1]}` : "";
-
-  const availableForSlug = maxSuffixAndSlugLength - suffix.length;
-  if (slug.length > availableForSlug) {
-    slug = slug.slice(0, availableForSlug).replace(/-+$/, "");
+  if (idMatch) {
+    const rawSlug = idMatch[1].toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+    const suffix = `_${idMatch[2].toLowerCase()}_${cleanRole}`;
+    const availableSlugLength = Math.max(1, 32 - suffix.length);
+    const truncatedSlug = (rawSlug || "task").slice(0, availableSlugLength).replace(/-+$/, "") || "t";
+    return `${truncatedSlug}${suffix}`.slice(0, 32);
   }
 
-  const candidate = `${cleanPrefix}-${slug}${suffix}`.toLowerCase().replace(/[^a-z0-9_-]/g, "");
-  return candidate.slice(0, 32);
+  const rawSlug = identifier.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  const suffix = `_${cleanRole}`;
+  const availableSlugLength = Math.max(1, 32 - suffix.length);
+  const truncatedSlug = (rawSlug || "task").slice(0, availableSlugLength).replace(/-+$/, "") || "t";
+  return `${truncatedSlug}${suffix}`.slice(0, 32);
+}
+
+export function generateShortId(): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "";
+  for (let index = 0; index < 8; index++) {
+    result += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return result;
+}
+
+export function readActiveLockPid(specIdentifier: string): number | null {
+  const lockPath = path.join(STATE_DIRECTORY, `${specIdentifier}.lock`);
+  if (!fs.existsSync(lockPath)) return null;
+  try {
+    const parsedLock = JSON.parse(fs.readFileSync(lockPath, "utf-8").trim());
+    if (typeof parsedLock.pid === "number") {
+      process.kill(parsedLock.pid, 0);
+      return parsedLock.pid;
+    }
+  } catch {}
+  return null;
 }
 
 function getTailscaleBaseUrl(): string {
@@ -82,6 +107,7 @@ export interface SpecMetadata {
   starRole?: string;
   starPoints?: number;
   content: string;
+  prompt?: string;
   targetProject: string;
 }
 
@@ -89,6 +115,8 @@ export interface BuildState {
   spec_id: string;
   spec_path: string;
   spec_title: string;
+  prompt?: string;
+  pending_feedback?: string;
   project: string;
   repo_dir: string;
   worktree_dir?: string;
@@ -161,8 +189,9 @@ export class BuildOrchestrator {
   public projectOverride?: string;
   public dryRun: boolean;
   public inlinePrompt?: string;
-  public approveFlag: boolean;
+  public approveScope?: ApproveScope;
   public statusOnly: boolean;
+  public feedbackText?: string;
   public lockPath?: string;
   public spec: SpecMetadata | null = null;
   public state: BuildState | null = null;
@@ -172,15 +201,18 @@ export class BuildOrchestrator {
     projectOverride?: string,
     dryRun: boolean = false,
     inlinePrompt?: string,
-    approveFlag: boolean = false,
-    statusOnly: boolean = false
+    approveScope: ApproveScope | boolean = false,
+    statusOnly: boolean = false,
+    feedbackText?: string
   ) {
     this.specQuery = specQuery;
     this.projectOverride = projectOverride;
     this.dryRun = dryRun;
     this.inlinePrompt = inlinePrompt;
-    this.approveFlag = approveFlag;
+    this.approveScope =
+      approveScope === true ? "any" : approveScope === false ? undefined : approveScope;
     this.statusOnly = statusOnly;
+    this.feedbackText = feedbackText;
   }
 
   async execute(): Promise<number> {
@@ -192,7 +224,7 @@ export class BuildOrchestrator {
 
     if (!this.spec) {
       console.error(
-        `❌ Error: Could not locate spec matching '${this.specQuery}' in ${SPEC_DIRECTORY} or ${VAULT_DIRECTORY}`
+        `❌ Error: Could not locate spec matching '${this.specQuery}' in ${SPEC_DIRECTORY}, ${VAULT_DIRECTORY}, or ${STATE_DIRECTORY}`
       );
       return 1;
     }
@@ -224,22 +256,41 @@ export class BuildOrchestrator {
     }
 
     try {
+      if (this.feedbackText && this.state) {
+        this.state.pending_feedback = this.feedbackText;
+        this.saveState(this.state);
+      }
+
+      const stageAttempts: Record<string, number> = {};
+      const maxStageAttempts = 2;
+
       while (true) {
         const determinedStage = this.determineExternalState();
         console.log(`🔍 Evaluated External State: ${determinedStage}`);
+
+        const isTerminalPause =
+          determinedStage === "AWAIT_PLAN_APPROVAL" ||
+          determinedStage === "AWAIT_HUMAN_REVIEW" ||
+          determinedStage === "AWAIT_PR_MERGE" ||
+          determinedStage === "AWAIT_CI_CHECKS" ||
+          determinedStage === "COMPLETED";
+
+        if (!isTerminalPause) {
+          stageAttempts[determinedStage] = (stageAttempts[determinedStage] || 0) + 1;
+          if (stageAttempts[determinedStage] > maxStageAttempts) {
+            const message = `⚠️ Stage '${determinedStage}' exceeded ${maxStageAttempts} attempts without advancing for '${this.spec.identifier}'. Stopping so you can inspect.`;
+            console.error(message);
+            this.sendOpenclawNotification(message);
+            return 1;
+          }
+        }
 
         const exitCode = await this.advanceLifecycle(determinedStage);
         if (exitCode !== 0) {
           return exitCode;
         }
 
-        if (
-          determinedStage === "AWAIT_PLAN_APPROVAL" ||
-          determinedStage === "AWAIT_HUMAN_REVIEW" ||
-          determinedStage === "AWAIT_PR_MERGE" ||
-          determinedStage === "AWAIT_CI_CHECKS" ||
-          determinedStage === "COMPLETED"
-        ) {
+        if (isTerminalPause) {
           return 0;
         }
       }
@@ -260,27 +311,79 @@ export class BuildOrchestrator {
     return baseSlug || "inline-task";
   }
 
+  inferTargetProjectFromCwd(): string | null {
+    const toplevel = runCommand(["git", "rev-parse", "--show-toplevel"], {
+      cwd: process.cwd(),
+      capture: true,
+    });
+    if (toplevel.status === 0 && toplevel.stdout.trim()) {
+      const resolvedRoot = path.resolve(toplevel.stdout.trim());
+      if (resolvedRoot.startsWith(REPOSITORIES_DIRECTORY + path.sep)) {
+        const relative = resolvedRoot.slice(REPOSITORIES_DIRECTORY.length + 1);
+        const projectName = relative.split(path.sep)[0];
+        if (projectName) {
+          return projectName;
+        }
+      }
+    }
+    return null;
+  }
+
   createInlineSpec(promptText: string): SpecMetadata {
-    const identifier = this.slugifyPrompt(promptText);
+    const slug = this.slugifyPrompt(promptText);
+    const identifier = `${slug}_${generateShortId()}`;
     const firstLine = promptText.trim().split("\n")[0].trim();
     const title = firstLine.length > 72 ? `${firstLine.slice(0, 69)}...` : firstLine;
+    const lowerPrompt = promptText.toLowerCase();
     const inferredProject =
-      this.projectOverride || this.inferTargetProject(identifier, promptText, undefined);
-    const filePath = path.join(INLINE_SPEC_DIRECTORY, `${identifier}.md`);
-
-    if (!this.dryRun) {
-      fs.mkdirSync(INLINE_SPEC_DIRECTORY, { recursive: true });
-      const fileMarkdown = `---\ntitle: ${JSON.stringify(title)}\n---\n\n${promptText.trim()}\n`;
-      fs.writeFileSync(filePath, fileMarkdown, "utf-8");
-    }
+      this.projectOverride ||
+      (lowerPrompt.includes("banerry") ? "banerry" : this.inferTargetProjectFromCwd()) ||
+      this.inferTargetProject(identifier, promptText, undefined);
 
     return {
       identifier,
-      filePath,
+      filePath: "",
       title,
       content: promptText.trim(),
+      prompt: promptText.trim(),
       targetProject: inferredProject,
     };
+  }
+
+  discoverSpecFromState(query: string): SpecMetadata | null {
+    if (!fs.existsSync(STATE_DIRECTORY)) return null;
+
+    const exactStatePath = path.join(STATE_DIRECTORY, `${query}.json`);
+    let stateFilePath: string | null = fs.existsSync(exactStatePath) ? exactStatePath : null;
+
+    if (!stateFilePath) {
+      const candidates = fs
+        .readdirSync(STATE_DIRECTORY)
+        .filter((entry) => entry.endsWith(".json") && entry.replace(/\.json$/, "").includes(query))
+        .sort();
+      if (candidates.length > 0) {
+        stateFilePath = path.join(STATE_DIRECTORY, candidates[0]);
+      }
+    }
+
+    if (!stateFilePath) return null;
+
+    try {
+      const stateData = JSON.parse(fs.readFileSync(stateFilePath, "utf-8")) as BuildState;
+      if (stateData.spec_path && fs.existsSync(stateData.spec_path)) {
+        return this.discoverSpec(stateData.spec_path);
+      }
+      return {
+        identifier: stateData.spec_id,
+        filePath: stateData.spec_path || "",
+        title: stateData.spec_title || stateData.spec_id,
+        content: stateData.prompt || "",
+        prompt: stateData.prompt,
+        targetProject: stateData.project || "starfocus",
+      };
+    } catch {
+      return null;
+    }
   }
 
   discoverSpec(query: string): SpecMetadata | null {
@@ -330,7 +433,7 @@ export class BuildOrchestrator {
     }
 
     if (candidatePaths.length === 0) {
-      return null;
+      return this.discoverSpecFromState(normalizedQuery);
     }
 
     const chosenPath = candidatePaths[0];
@@ -422,6 +525,7 @@ export class BuildOrchestrator {
       spec_id: spec.identifier,
       spec_path: spec.filePath,
       spec_title: spec.title,
+      prompt: spec.prompt,
       project: spec.targetProject,
       repo_dir: repoDir,
       worktree_dir: worktreeDir,
@@ -434,7 +538,9 @@ export class BuildOrchestrator {
       deployed: false,
       history: [],
     };
-    this.saveState(initialState);
+    if (!this.dryRun && !this.statusOnly) {
+      this.saveState(initialState);
+    }
     return initialState;
   }
 
@@ -446,88 +552,82 @@ export class BuildOrchestrator {
     fs.writeFileSync(stateFile, JSON.stringify(state, null, 2), "utf-8");
   }
 
-  getHerdrSessionName(): string {
-    return this.spec ? this.spec.identifier : "default";
+  findHerdrCoreBinary(): string | null {
+    return findExecutable("hc", [
+      "/usr/bin/herdr-core",
+      path.join(os.homedir(), ".local", "bin", "hc"),
+      path.join(os.homedir(), ".local", "bin", "herdr-core"),
+    ]);
   }
 
-  ensureHerdrSession(herdrBin: string, sessionName: string): boolean {
-    const statusRes = runCommand([herdrBin, "--session", sessionName, "status"], { capture: true });
-    if (statusRes.status === 0 && statusRes.stdout.includes("status: running")) {
+  ensureHerdrCore(herdrCoreBinary: string): boolean {
+    const statusResult = runCommand([herdrCoreBinary, "server", "status"], { capture: true });
+    if (statusResult.status === 0) {
       return true;
     }
 
-    try {
-      const child = child_process.spawn(herdrBin, ["--session", sessionName, "server"], {
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
+    const startResult = runCommand([herdrCoreBinary, "server", "start"], { capture: true });
+    if (startResult.status === 0) {
+      return true;
+    }
 
-      for (let attempt = 0; attempt < 30; attempt++) {
-        const check = runCommand([herdrBin, "--session", sessionName, "status"], { capture: true });
-        if (check.status === 0 && check.stdout.includes("status: running")) {
-          return true;
-        }
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
-      }
-    } catch {}
-
-    return false;
+    const recheckResult = runCommand([herdrCoreBinary, "server", "status"], { capture: true });
+    return recheckResult.status === 0;
   }
 
   acquireLock(): boolean {
     if (!this.spec || this.dryRun || this.statusOnly) return true;
 
     const lockPath = path.join(STATE_DIRECTORY, `${this.spec.identifier}.lock`);
-    if (fs.existsSync(lockPath)) {
+    fs.mkdirSync(STATE_DIRECTORY, { recursive: true });
+
+    const lockPayload = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() });
+
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const rawContent = fs.readFileSync(lockPath, "utf-8").trim();
-        const parsedLock = JSON.parse(rawContent);
-        const existingPid = parsedLock.pid;
-        if (existingPid && typeof existingPid === "number") {
-          try {
-            process.kill(existingPid, 0);
-            const herdrSessionName = this.getHerdrSessionName();
-            console.log(`⚠️ An active build process for '${this.spec.identifier}' is already running (PID: ${existingPid}).`);
-            console.log(`👉 Attach to Herdr session: herdr session attach ${herdrSessionName}`);
-            return false;
-          } catch {
-            // Stale lock from terminated process
-          }
-        }
-      } catch {}
-    }
-
-    try {
-      fs.mkdirSync(STATE_DIRECTORY, { recursive: true });
-      fs.writeFileSync(
-        lockPath,
-        JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }),
-        "utf-8"
-      );
-      this.lockPath = lockPath;
-
-      const cleanup = () => {
+        const fileDescriptor = fs.openSync(lockPath, "wx");
         try {
-          if (this.lockPath && fs.existsSync(this.lockPath)) {
-            fs.unlinkSync(this.lockPath);
-          }
-        } catch {}
-      };
+          fs.writeFileSync(fileDescriptor, lockPayload, "utf-8");
+        } finally {
+          fs.closeSync(fileDescriptor);
+        }
+        this.lockPath = lockPath;
 
-      process.on("exit", cleanup);
-      process.on("SIGINT", () => {
-        cleanup();
-        process.exit(130);
-      });
-      process.on("SIGTERM", () => {
-        cleanup();
-        process.exit(143);
-      });
-      return true;
-    } catch {
-      return false;
+        const cleanup = () => {
+          try {
+            if (this.lockPath && fs.existsSync(this.lockPath)) {
+              fs.unlinkSync(this.lockPath);
+            }
+          } catch {}
+        };
+
+        process.on("exit", cleanup);
+        process.on("SIGINT", () => {
+          cleanup();
+          process.exit(130);
+        });
+        process.on("SIGTERM", () => {
+          cleanup();
+          process.exit(143);
+        });
+        return true;
+      } catch (error: any) {
+        if (error?.code !== "EEXIST") {
+          return false;
+        }
+        const activePid = readActiveLockPid(this.spec.identifier);
+        if (activePid !== null) {
+          console.log(`⚠️ An active build process for '${this.spec.identifier}' is already running (PID: ${activePid}).`);
+          console.log(`👉 Inspect live terminals: hc ls --label spec=${this.spec.identifier}`);
+          return false;
+        }
+        try {
+          fs.unlinkSync(lockPath);
+        } catch {}
+      }
     }
+
+    return false;
   }
 
   releaseLock(): void {
@@ -621,22 +721,21 @@ export class BuildOrchestrator {
       return "NOT_GENERATED";
     }
 
-    if (this.approveFlag || this.state?.plan_approved) {
-      if (this.state) {
-        this.state.plan_approved = true;
-      }
-      return "APPROVED";
+    if (this.state?.pending_feedback) {
+      return "FEEDBACK_RECEIVED";
     }
 
-    const transcriptFile = this.findLatestTranscriptForSpec(specId);
-    if (transcriptFile && fs.existsSync(transcriptFile)) {
-      const feedbackOrApproval = this.inspectTranscriptForApproval(transcriptFile);
-      if (feedbackOrApproval === "APPROVED") {
-        return "APPROVED";
+    if (this.approveScope === "plan" || this.approveScope === "any" || this.state?.plan_approved) {
+      if (this.state) {
+        this.state.plan_approved = true;
+        if (!this.dryRun && !this.statusOnly) {
+          this.saveState(this.state);
+        }
       }
-      if (feedbackOrApproval === "FEEDBACK") {
-        return "FEEDBACK_RECEIVED";
+      if (this.approveScope === "plan" || this.approveScope === "any") {
+        this.approveScope = undefined;
       }
+      return "APPROVED";
     }
 
     return "PENDING_APPROVAL";
@@ -794,10 +893,24 @@ export class BuildOrchestrator {
   }
 
   checkHumanReviewStatus(): string {
-    if (this.approveFlag || this.state?.human_reviewed || this.state?.pr_approved) {
+    if (this.state?.pending_feedback) {
+      return "FEEDBACK_RECEIVED";
+    }
+
+    if (
+      this.approveScope === "review" ||
+      this.approveScope === "any" ||
+      this.state?.human_reviewed ||
+      this.state?.pr_approved
+    ) {
       if (this.state) {
         this.state.human_reviewed = true;
-        this.saveState(this.state);
+        if (!this.dryRun && !this.statusOnly) {
+          this.saveState(this.state);
+        }
+      }
+      if (this.approveScope === "review" || this.approveScope === "any") {
+        this.approveScope = undefined;
       }
       return "APPROVED";
     }
@@ -813,24 +926,6 @@ export class BuildOrchestrator {
       const toolbarComments = this.fetchVercelToolbarComments(repositoryDirectory, branchName);
       if (toolbarComments.count > 0) {
         console.log(`💬 Found ${toolbarComments.count} unresolved Vercel toolbar comment(s) on branch '${branchName}'`);
-        return "FEEDBACK_RECEIVED";
-      }
-    }
-
-    const transcriptFile = this.spec ? this.findLatestTranscriptForSpec(this.spec.identifier) : null;
-    if (transcriptFile && fs.existsSync(transcriptFile)) {
-      const sinceTimestamp =
-        this.state?.human_review_requested_at ||
-        (this.state?.stage === "AWAIT_HUMAN_REVIEW" ? new Date().toISOString() : undefined);
-      const reviewApproval = this.inspectTranscriptForReviewApproval(transcriptFile, sinceTimestamp);
-      if (reviewApproval === "APPROVED") {
-        if (this.state) {
-          this.state.human_reviewed = true;
-          this.saveState(this.state);
-        }
-        return "APPROVED";
-      }
-      if (reviewApproval === "FEEDBACK") {
         return "FEEDBACK_RECEIVED";
       }
     }
@@ -1106,27 +1201,37 @@ export class BuildOrchestrator {
     fs.mkdirSync(plansDirectory, { recursive: true });
     const markdownPlanPath = path.join(plansDirectory, `${this.spec.identifier}.md`);
 
-    console.log("🧠 Spawning Planner Agent (Gemini 4 Argon High) to formulate native technical plan...");
+    const specInstruction =
+      this.spec.filePath && fs.existsSync(this.spec.filePath)
+        ? `Please read the specification file at '${this.spec.filePath}' for project '${this.spec.targetProject}'. `
+        : `Feature specification for project '${this.spec.targetProject}':\n\n${this.spec.content || this.spec.title}\n\n`;
+
+    const feedbackInstruction = this.state.pending_feedback
+      ? `\n\nHuman feedback to address in this revised plan:\n${this.state.pending_feedback}\n`
+      : "";
+
+    console.log("🧠 Spawning Planner Agent in herdr-core to formulate technical plan...");
     const plannerPrompt =
-      `Please read the specification file at '${this.spec.filePath}' for project '${this.spec.targetProject}'. ` +
+      specInstruction +
       `Explore the repository to analyze existing patterns, schemas, routing, and component contracts. ` +
       `Formulate a comprehensive technical plan and save the complete Markdown plan to '${markdownPlanPath}'. ` +
-      `Include: feature breakdown, data models and schema changes, component contracts, implementation steps, testing strategy, and architectural trade-offs.`;
+      `Include: feature breakdown, data models and schema changes, component contracts, implementation steps, testing strategy, and architectural trade-offs.` +
+      feedbackInstruction;
 
-    const plannerSuccess = await this.runAntigravityAgent(
-      `planner-${this.spec.identifier}`,
-      "You are the Lead Software Architect. Explore the codebase and formulate a comprehensive technical plan in Markdown.",
+    const plannerSuccess = await this.runAgentInHerdrCore(
+      "plan",
       plannerPrompt,
       this.state.repo_dir,
       STAGE_MODELS.planner
     );
 
-    if (!plannerSuccess) {
-      console.error("❌ Planner agent execution encountered an error.");
+    if (!plannerSuccess || !fs.existsSync(markdownPlanPath)) {
+      console.error("❌ Planner agent did not produce the technical plan.");
       return 1;
     }
 
     this.state.plan_file = markdownPlanPath;
+    this.state.pending_feedback = undefined;
 
     const dashboardUrl = this.publishTaskDashboard("PLAN REVIEW");
     this.state.visual_plan_url = dashboardUrl;
@@ -1134,10 +1239,10 @@ export class BuildOrchestrator {
     this.saveState(this.state);
 
     const notificationMessage =
-      `⚠️ [Plan Review Required] Native technical plan generated for '${this.spec.title}'.\n` +
+      `⚠️ [Plan Review Required] Technical plan generated for '${this.spec.title}'.\n` +
       `🔗 Plan Dashboard: ${dashboardUrl}\n` +
       `📄 Plan File: ${markdownPlanPath}\n` +
-      `Reply 'approve' or run 'build --spec-id ${this.spec.identifier} --approve' to proceed.`;
+      `Run 'build ${this.spec.identifier} --approve-plan' or 'build ls' to approve/revise.`;
     this.sendOpenclawNotification(notificationMessage);
 
     console.log(`✅ Plan published to dashboard: ${dashboardUrl}`);
@@ -1150,7 +1255,8 @@ export class BuildOrchestrator {
     console.log("⏸️  Technical plan is waiting for your review:");
     console.log(`🔗 ${this.state?.visual_plan_url || `${getTailscaleBaseUrl()}/`}`);
     console.log(`📄 Markdown Plan: ${this.state?.plan_file || "N/A"}`);
-    console.log(`👉 Reply 'approve' on WhatsApp or run 'build --spec-id ${this.spec?.identifier} --approve' after approving.`);
+    console.log(`👉 Approve:  build ${this.spec?.identifier} --approve-plan`);
+    console.log(`👉 Feedback: build ${this.spec?.identifier} --feedback "<comments>" (or run 'build ls')`);
   }
 
   handleSetupWorktree(): number {
@@ -1191,15 +1297,22 @@ export class BuildOrchestrator {
   async handleImplementation(): Promise<number> {
     if (!this.spec || !this.state || !this.state.worktree_dir) return 1;
 
-    const agentName = formatHerdrAgentName("impl", this.spec.identifier);
-    console.log(`🛠️  Spawning Antigravity Implementer Agent '${agentName}' in worktree: ${this.state.worktree_dir}`);
+    const terminalName = formatHerdrTerminalName(this.spec.identifier, "impl");
+    const planPath =
+      this.state.plan_file || path.join(STATE_DIRECTORY, "plans", `${this.spec.identifier}.md`);
+    const specInstruction =
+      this.spec.filePath && fs.existsSync(this.spec.filePath)
+        ? `Implement the feature specified in '${this.spec.filePath}'`
+        : `Implement the feature:\n\n${this.spec.content || this.spec.title}\n\n`;
+
+    console.log(`🛠️  Spawning Implementer Agent '${terminalName}' in worktree: ${this.state.worktree_dir}`);
     const prompt =
-      `Implement the feature specified in '${this.spec.filePath}' following the technical plan. ` +
+      `${specInstruction} following the technical plan at '${planPath}'. ` +
       `Write unit and component tests first (TDD), then build the components and functions. ` +
       `Ensure all local tests pass via 'bun test'.`;
 
-    const success = await this.runAgentInHerdr(
-      agentName,
+    const success = await this.runAgentInHerdrCore(
+      "impl",
       prompt,
       this.state.worktree_dir,
       STAGE_MODELS.implementer
@@ -1210,13 +1323,14 @@ export class BuildOrchestrator {
       return 1;
     }
 
-    let testsPass = this.runLocalTestGate(this.state.worktree_dir);
+    const testsPass = this.runLocalTestGate(this.state.worktree_dir);
     if (!testsPass) {
-      console.log("⚠️ Local checks failed. Resuming implementer for automated repair...");
+      console.log("⚠️ Local checks failed. Spawning repair agent in herdr-core...");
       const repairPrompt =
-        "Local test suite failed. Please inspect failure output, fix errors, and verify passing status.";
-      await this.runAgentInHerdr(
-        agentName,
+        `Local test suite failed in '${this.state.worktree_dir}' for plan '${planPath}'. ` +
+        `Please inspect failure output, fix errors, and verify passing status.`;
+      await this.runAgentInHerdrCore(
+        "repair",
         repairPrompt,
         this.state.worktree_dir,
         STAGE_MODELS.repair
@@ -1390,9 +1504,8 @@ export class BuildOrchestrator {
       `Failure output:\n\`\`\`\n${failureLogs}\n\`\`\`\n\n` +
       `Please address the root cause, fix the errors, and verify that the repository test suite passes.`;
 
-    const agentName = formatHerdrAgentName("impl", this.spec.identifier);
-    await this.runAgentInHerdr(
-      agentName,
+    await this.runAgentInHerdrCore(
+      "ci",
       repairPrompt,
       this.state.worktree_dir,
       STAGE_MODELS.ciRepair
@@ -1438,28 +1551,24 @@ export class BuildOrchestrator {
     this.publishTaskDashboard("HUMAN REVIEW");
     this.saveState(this.state);
 
-    const herdrAgentName = formatHerdrAgentName("impl", this.spec.identifier);
-    const sessionName = this.getHerdrSessionName();
-
     console.log("\n==================================================");
     console.log(`⏸️  Awaiting Human Review: ${this.spec.title}`);
     console.log("==================================================");
     console.log(`🌐 Local Dev Server:   ${localUrl}`);
     console.log(`📱 Tailscale Dev URL:  ${tailscaleUrl}`);
     console.log(`✨ Vercel Toolbar:     Active for visual comments and annotations in-browser`);
-    console.log(`💬 Herdr Session:      herdr session attach ${sessionName}`);
-    console.log(`👉 Send feedback:      herdr --session ${sessionName} agent prompt ${herdrAgentName} "<your comments>"`);
+    console.log(`👉 Send feedback:      build ${this.spec.identifier} --feedback "<your comments>"`);
+    console.log(`👉 Or manage via:      build ls`);
     console.log(`\n✅ Once satisfied, approve via:`);
-    console.log(`   - Reply 'approve' on WhatsApp or in transcript`);
-    console.log(`   - Run: build --spec-id ${this.spec.identifier} --approve`);
+    console.log(`   - Run: build ${this.spec.identifier} --approve-review`);
     console.log("==================================================\n");
 
     const notificationMessage =
       `⏸️ [Human Review Required] '${this.spec.title}' is ready for review!\n` +
       `🌐 Local: ${localUrl}\n` +
       `📱 Tailscale: ${tailscaleUrl}\n` +
-      `✨ Use Vercel Toolbar for comments or prompt herdr agent '${herdrAgentName}' (herdr session attach ${sessionName}).\n` +
-      `Reply 'approve' or run 'build --spec-id ${this.spec.identifier} --approve' to merge.`;
+      `✨ Use Vercel Toolbar for comments, 'build ${this.spec.identifier} --feedback "..."', or 'build ls'.\n` +
+      `Run 'build ${this.spec.identifier} --approve-review' to merge.`;
     this.sendOpenclawNotification(notificationMessage);
   }
 
@@ -1467,11 +1576,6 @@ export class BuildOrchestrator {
     if (!this.spec || !this.state || !this.state.worktree_dir) return 1;
 
     console.log("💬 Resolving human review feedback in worktree...");
-    const transcriptPath = this.findLatestTranscriptForSpec(this.spec.identifier);
-    let latestFeedback = "";
-    if (transcriptPath && fs.existsSync(transcriptPath)) {
-      latestFeedback = this.getLatestFeedbackFromTranscript(transcriptPath);
-    }
 
     const toolbarComments = this.fetchVercelToolbarComments(this.state.repo_dir, this.state.branch_name);
     let toolbarText = "";
@@ -1480,22 +1584,23 @@ export class BuildOrchestrator {
     }
 
     const feedbackParts: string[] = [];
-    if (latestFeedback) {
-      feedbackParts.push(`Session transcript feedback:\n"${latestFeedback}"`);
+    if (this.state.pending_feedback) {
+      feedbackParts.push(`Human feedback:\n${this.state.pending_feedback}`);
     }
     if (toolbarText) {
       feedbackParts.push(`Vercel toolbar comments:\n${toolbarText}`);
     }
 
+    const planPath =
+      this.state.plan_file || path.join(STATE_DIRECTORY, "plans", `${this.spec.identifier}.md`);
     const combinedFeedback = feedbackParts.join("\n\n");
     const fixPrompt = combinedFeedback
-      ? `The human reviewer provided feedback on the implementation:\n\n${combinedFeedback}\n\n` +
+      ? `The human reviewer provided feedback on '${this.spec.title}' (plan at '${planPath}'):\n\n${combinedFeedback}\n\n` +
         `Please address the comments, update components and tests accordingly, and ensure tests pass.`
-      : `Please review recent comments and feedback from the human reviewer, implement requested adjustments, and verify tests pass.`;
+      : `Please review recent comments and feedback from the human reviewer for '${this.spec.title}' (plan at '${planPath}'), implement requested adjustments, and verify tests pass.`;
 
-    const agentName = formatHerdrAgentName("impl", this.spec.identifier);
-    await this.runAgentInHerdr(
-      agentName,
+    await this.runAgentInHerdrCore(
+      "feedback",
       fixPrompt,
       this.state.worktree_dir,
       STAGE_MODELS.commentResolver
@@ -1516,6 +1621,7 @@ export class BuildOrchestrator {
     }
 
     if (this.state) {
+      this.state.pending_feedback = undefined;
       this.state.human_review_requested_at = new Date().toISOString();
       this.saveState(this.state);
     }
@@ -1544,9 +1650,8 @@ export class BuildOrchestrator {
       `Identify any dead code, missing error boundaries, or potential type regressions. ` +
       `Apply direct hardening edits in the worktree.`;
 
-    const verifierAgentName = formatHerdrAgentName("verifier", this.spec.identifier);
-    await this.runAgentInHerdr(
-      verifierAgentName,
+    await this.runAgentInHerdrCore(
+      "verify",
       verifierPrompt,
       this.state.worktree_dir,
       STAGE_MODELS.verifier
@@ -1618,194 +1723,214 @@ export class BuildOrchestrator {
     return 0;
   }
 
-  async runAgentInHerdr(
-    rawAgentName: string,
+  parseHerdrCoreJson(rawOutput: string): Record<string, any> | null {
+    const trimmed = rawOutput.trim();
+    if (!trimmed) return null;
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      const lastLine = trimmed.split("\n").pop()?.trim();
+      if (!lastLine) return null;
+      try {
+        return JSON.parse(lastLine);
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  waitForHerdrCoreTurn(
+    herdrCoreBinary: string,
+    terminalAddress: string
+  ): { completed: boolean; status: string; exitCode: number | null } {
+    while (true) {
+      const waitResult = runCommand([herdrCoreBinary, "wait", terminalAddress, "--json"], {
+        capture: true,
+      });
+      const parsed = this.parseHerdrCoreJson(waitResult.stdout);
+      const reason = parsed?.reason;
+      const status = parsed?.status || parsed?.state || "";
+      const exitCode = typeof parsed?.exit_code === "number" ? parsed.exit_code : null;
+
+      if (reason === "timeout" || reason === "message") {
+        continue;
+      }
+
+      if (status === "blocked") {
+        return { completed: false, status: "blocked", exitCode };
+      }
+
+      if (status === "error" || (exitCode !== null && exitCode !== 0)) {
+        return { completed: false, status: status || "error", exitCode };
+      }
+
+      return { completed: waitResult.status === 0, status: status || "done", exitCode };
+    }
+  }
+
+  cleanupHerdrCoreTerminal(herdrCoreBinary: string, terminalAddress: string): void {
+    runCommand([herdrCoreBinary, "kill", terminalAddress], { capture: true });
+    runCommand([herdrCoreBinary, "rm", terminalAddress], { capture: true });
+  }
+
+  async runAgentInHerdrCore(
+    role: TerminalRole,
     prompt: string,
-    workingDir: string,
+    workingDirectory: string,
     model: string = STAGE_MODELS.implementer
   ): Promise<boolean> {
-    const agentName = rawAgentName.length > 32
-      ? formatHerdrAgentName(rawAgentName.split("-")[0] || "agent", rawAgentName.slice(rawAgentName.indexOf("-") + 1))
-      : rawAgentName;
+    const specIdentifier = this.spec?.identifier || "default";
+    const terminalName = formatHerdrTerminalName(specIdentifier, role);
+    const herdrCoreBinary = this.findHerdrCoreBinary();
 
-    const herdrBin = findExecutable("herdr", [path.join(os.homedir(), ".local", "bin", "herdr")]);
-    if (!herdrBin || !fs.existsSync(herdrBin)) {
+    if (!herdrCoreBinary || !fs.existsSync(herdrCoreBinary) || !this.ensureHerdrCore(herdrCoreBinary)) {
       return await this.runAntigravityAgent(
-        agentName,
+        terminalName,
         "You are an AI coding assistant.",
         prompt,
-        workingDir,
+        workingDirectory,
         model
       );
     }
 
-    const sessionName = this.getHerdrSessionName();
-    const sessionReady = this.ensureHerdrSession(herdrBin, sessionName);
-    if (!sessionReady) {
-      console.warn(`⚠️ Failed to connect to Herdr session '${sessionName}', falling back to background runner.`);
-      return await this.runAntigravityAgent(
-        agentName,
-        "You are an AI coding assistant.",
-        prompt,
-        workingDir,
-        model
-      );
-    }
+    let terminalAddress = terminalName;
+    let shouldCleanup = true;
 
     try {
-      const getAgentResult = runCommand([herdrBin, "--session", sessionName, "agent", "get", agentName], { capture: true });
-      let existingAgent: any = null;
-      if (getAgentResult.status === 0 && getAgentResult.stdout.trim()) {
-        try {
-          const parsed = JSON.parse(getAgentResult.stdout);
-          existingAgent = parsed?.result?.agent || null;
-        } catch {}
-      }
+      const getResult = runCommand([herdrCoreBinary, "get", terminalName, "--json"], { capture: true });
+      let reuseLiveTerminal = false;
 
-      if (existingAgent) {
-        console.log(`🐾 Reusing existing Herdr agent '${agentName}' in session '${sessionName}' (status: ${existingAgent.agent_status || "idle"})`);
-        if (existingAgent.agent_status === "blocked") {
-          runCommand([herdrBin, "--session", sessionName, "agent", "send-keys", agentName, "enter"], { capture: true });
-        }
-        if (existingAgent.agent_status === "working") {
-          console.log(`⏳ Agent '${agentName}' is already actively working. Waiting for completion...`);
-          const waitResult = runCommand(
-            [herdrBin, "--session", sessionName, "agent", "wait", agentName, "--until", "idle", "--timeout", "1800000"],
-            { capture: true }
-          );
-          return waitResult.status === 0;
-        }
+      if (getResult.status === 0) {
+        const terminalInfo = this.parseHerdrCoreJson(getResult.stdout);
+        const ownerSpec = terminalInfo?.labels?.spec;
+        const isAlive = terminalInfo?.alive !== false && !terminalInfo?.exited_at;
 
-        console.log(`💬 Submitting prompt to existing agent '${agentName}' in session '${sessionName}'...`);
-        const promptCmd = [
-          herdrBin,
-          "--session",
-          sessionName,
-          "agent",
-          "prompt",
-          agentName,
-          prompt,
-          "--wait",
-          "--timeout",
-          "1800000",
-        ];
-        const promptRes = runCommand(promptCmd, { capture: true });
-        if (promptRes.status !== 0) {
-          const checkAgent = runCommand([herdrBin, "--session", sessionName, "agent", "get", agentName], { capture: true });
-          try {
-            const parsed = JSON.parse(checkAgent.stdout)?.result?.agent;
-            if (parsed?.agent_status === "working") {
-              console.log(`⏳ Agent '${agentName}' is still actively working. Continuing wait...`);
-              const waitAgain = runCommand([herdrBin, "--session", sessionName, "agent", "wait", agentName, "--until", "idle", "--timeout", "1800000"], { capture: true });
-              return waitAgain.status === 0;
-            }
-          } catch {}
-          console.error(`❌ Herdr prompt error: ${promptRes.stderr || promptRes.stdout}`);
-        }
-        return promptRes.status === 0;
-      }
-
-      const paneListRes = runCommand([herdrBin, "--session", sessionName, "pane", "list"], { capture: true });
-      let panes: any[] = [];
-      if (paneListRes.status === 0 && paneListRes.stdout.trim()) {
-        try {
-          panes = JSON.parse(paneListRes.stdout)?.result?.panes || [];
-        } catch {}
-      }
-
-      let targetPaneId: string | null = null;
-      if (panes.length === 0) {
-        const createResult = runCommand(
-          [herdrBin, "--session", sessionName, "workspace", "create", "--cwd", workingDir, "--label", sessionName],
-          { capture: true }
-        );
-        if (createResult.status === 0 && createResult.stdout.trim()) {
-          try {
-            const createJson = JSON.parse(createResult.stdout);
-            targetPaneId = createJson?.result?.root_pane?.pane_id || null;
-          } catch {}
-        }
-        if (!targetPaneId) {
-          const refreshedPanesRes = runCommand([herdrBin, "--session", sessionName, "pane", "list"], { capture: true });
-          if (refreshedPanesRes.status === 0) {
-            try {
-              const refreshedPanes = JSON.parse(refreshedPanesRes.stdout)?.result?.panes || [];
-              if (refreshedPanes.length > 0) {
-                targetPaneId = refreshedPanes[0].pane_id;
+        if (!isAlive) {
+          runCommand([herdrCoreBinary, "rm", terminalName], { capture: true });
+        } else if (ownerSpec === specIdentifier) {
+          reuseLiveTerminal = true;
+          terminalAddress = terminalInfo?.id || terminalName;
+          const currentState = terminalInfo?.state || terminalInfo?.status || "";
+          if (currentState === "working") {
+            console.log(`⏳ Terminal '${terminalName}' (${terminalAddress}) is still working. Waiting for turn...`);
+            const preWait = this.waitForHerdrCoreTurn(herdrCoreBinary, terminalAddress);
+            if (!preWait.completed) {
+              if (preWait.status === "blocked") {
+                shouldCleanup = false;
+                console.warn(`⚠️ Terminal '${terminalName}' (${terminalAddress}) is blocked. Attach with: hc attach ${terminalAddress}`);
               }
-            } catch {}
+              return false;
+            }
           }
+        } else {
+          console.error(`❌ Live terminal '${terminalName}' belongs to spec '${ownerSpec || "unknown"}', not '${specIdentifier}'.`);
+          return false;
         }
-      } else {
-        targetPaneId = panes[0].pane_id;
-        if (panes.length > 1) {
-          console.log(`🧹 Closing ${panes.length - 1} extra pane(s) in session '${sessionName}' to protect single-agent layout...`);
-          for (let i = 1; i < panes.length; i++) {
-            runCommand([herdrBin, "--session", sessionName, "pane", "close", panes[i].pane_id], { capture: true });
-          }
-        }
+      } else if (getResult.status !== 3) {
+        console.warn(`⚠️ herdr-core get failed (exit ${getResult.status}), falling back to direct runner.`);
+        return await this.runAntigravityAgent(
+          terminalName,
+          "You are an AI coding assistant.",
+          prompt,
+          workingDirectory,
+          model
+        );
       }
 
-      if (targetPaneId) {
-        const startCmd = [
-          herdrBin,
-          "--session",
-          sessionName,
-          "agent",
-          "start",
-          agentName,
-          "--kind",
-          "agy",
-          "--pane",
-          targetPaneId,
+      if (!reuseLiveTerminal) {
+        const agyFlags =
+          role === "plan" ? ["--mode", "plan"] : ["--dangerously-skip-permissions"];
+        const runCommandArgs = [
+          herdrCoreBinary,
+          "run",
+          "--bg",
+          "--json",
+          "--no-parent",
+          "--no-notify",
+          "--name",
+          terminalName,
+          "--cwd",
+          workingDirectory,
+          "--label",
+          `spec=${specIdentifier}`,
+          "--label",
+          `project=${this.spec?.targetProject || "default"}`,
+          "--label",
+          `role=${role}`,
           "--",
+          "agy",
           "--model",
           model,
-          "--dangerously-skip-permissions",
+          ...agyFlags,
         ];
-        const startResult = runCommand(startCmd, { capture: true });
-        if (startResult.status !== 0) {
-          console.error(`❌ Herdr start error: ${startResult.stderr || startResult.stdout}`);
+
+        const launchResult = runCommand(runCommandArgs, { capture: true });
+        if (launchResult.status !== 0) {
+          console.error(`❌ herdr-core run error: ${launchResult.stderr || launchResult.stdout}`);
+          return false;
         }
 
-        runCommand([herdrBin, "--session", sessionName, "agent", "wait", agentName, "--until", "idle", "--timeout", "15000"], { capture: true });
+        const launchJson = this.parseHerdrCoreJson(launchResult.stdout);
+        terminalAddress = launchJson?.id || terminalName;
+        console.log(`👉 Watch/steer in herdr-core: hc attach ${terminalAddress} (${terminalName})`);
 
-        const promptCmd = [
-          herdrBin,
-          "--session",
-          sessionName,
-          "agent",
-          "prompt",
-          agentName,
-          prompt,
-          "--wait",
-          "--timeout",
-          "1800000",
-        ];
-        const promptRes = runCommand(promptCmd, { capture: true });
-        if (promptRes.status !== 0) {
-          const checkAgent = runCommand([herdrBin, "--session", sessionName, "agent", "get", agentName], { capture: true });
-          try {
-            const parsed = JSON.parse(checkAgent.stdout)?.result?.agent;
-            if (parsed?.agent_status === "working") {
-              console.log(`⏳ Agent '${agentName}' is still actively working. Continuing wait...`);
-              const waitAgain = runCommand([herdrBin, "--session", sessionName, "agent", "wait", agentName, "--until", "idle", "--timeout", "1800000"], { capture: true });
-              return waitAgain.status === 0;
-            }
-          } catch {}
-          console.error(`❌ Herdr prompt error: ${promptRes.stderr || promptRes.stdout}`);
+        const readyWait = this.waitForHerdrCoreTurn(herdrCoreBinary, terminalAddress);
+        if (!readyWait.completed) {
+          if (readyWait.status === "blocked") {
+            shouldCleanup = false;
+            console.warn(`⚠️ Terminal '${terminalName}' (${terminalAddress}) is blocked during startup. Attach with: hc attach ${terminalAddress}`);
+          }
+          return false;
         }
-        return promptRes.status === 0;
       }
-    } catch {}
 
-    return await this.runAntigravityAgent(
-      agentName,
-      "You are an AI coding assistant.",
-      prompt,
-      workingDir,
-      model
-    );
+      const sendResult = runCommand(
+        [herdrCoreBinary, "send", "--wait", terminalAddress, "--json", "--", prompt],
+        { capture: true }
+      );
+      const sendJson = this.parseHerdrCoreJson(sendResult.stdout);
+      const sendReason = sendJson?.reason;
+      const sendStatus = sendJson?.status || sendJson?.state || "";
+
+      if (sendResult.status !== 0 && sendReason !== "timeout" && sendReason !== "message") {
+        console.error(`❌ herdr-core send error: ${sendResult.stderr || sendResult.stdout}`);
+        return false;
+      }
+
+      if (sendReason === "timeout" || sendReason === "message") {
+        const turnResult = this.waitForHerdrCoreTurn(herdrCoreBinary, terminalAddress);
+        if (!turnResult.completed) {
+          if (turnResult.status === "blocked") {
+            shouldCleanup = false;
+            console.warn(`⚠️ Terminal '${terminalName}' (${terminalAddress}) is blocked. Attach with: hc attach ${terminalAddress}`);
+            this.sendOpenclawNotification(
+              `⚠️ Terminal '${terminalName}' (${terminalAddress}) is blocked for '${specIdentifier}'. Run: hc attach ${terminalAddress}`
+            );
+          }
+          return false;
+        }
+        return true;
+      }
+
+      if (sendStatus === "blocked") {
+        shouldCleanup = false;
+        console.warn(`⚠️ Terminal '${terminalName}' (${terminalAddress}) is blocked. Attach with: hc attach ${terminalAddress}`);
+        this.sendOpenclawNotification(
+          `⚠️ Terminal '${terminalName}' (${terminalAddress}) is blocked for '${specIdentifier}'. Run: hc attach ${terminalAddress}`
+        );
+        return false;
+      }
+
+      if (sendStatus === "error" || (typeof sendJson?.exit_code === "number" && sendJson.exit_code !== 0)) {
+        return false;
+      }
+
+      return true;
+    } finally {
+      if (shouldCleanup) {
+        this.cleanupHerdrCoreTerminal(herdrCoreBinary, terminalAddress);
+      }
+    }
   }
 
   async runAntigravityAgent(
@@ -1859,31 +1984,9 @@ export class BuildOrchestrator {
 
     if (this.state.plan_file && fs.existsSync(this.state.plan_file)) {
       cmd.push("--written-plan", this.state.plan_file);
-    } else {
-      const brainDir = path.join(ANTIGRAVITY_APP_DATA, "brain");
-      if (fs.existsSync(brainDir)) {
-        const folders = fs
-          .readdirSync(brainDir, { withFileTypes: true })
-          .filter((d) => d.isDirectory())
-          .map((d) => path.join(brainDir, d.name))
-          .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-
-        for (const folder of folders) {
-          let foundPlan = false;
-          const entries = fs.readdirSync(folder);
-          for (const entry of entries) {
-            if (entry.endsWith(".md") && entry.toLowerCase().includes("plan")) {
-              cmd.push("--written-plan", path.join(folder, entry));
-              foundPlan = true;
-              break;
-            }
-          }
-          if (foundPlan) break;
-        }
-      }
     }
 
-    if (fs.existsSync(this.spec.filePath)) {
+    if (this.spec.filePath && fs.existsSync(this.spec.filePath)) {
       cmd.push("--spec", this.spec.filePath);
     }
 
@@ -1976,30 +2079,267 @@ export class BuildOrchestrator {
   }
 }
 
+export interface BuildListEntry {
+  spec_id: string;
+  spec_title: string;
+  project: string;
+  stage: string;
+  running_pid: number | null;
+  live_terminals: Array<{ id: string; name?: string; state?: string }>;
+}
+
+export function listBuildsSnapshot(includeAll: boolean = false): BuildListEntry[] {
+  if (!fs.existsSync(STATE_DIRECTORY)) {
+    return [];
+  }
+
+  const herdrCoreBinary = findExecutable("hc", [
+    "/usr/bin/herdr-core",
+    path.join(os.homedir(), ".local", "bin", "hc"),
+    path.join(os.homedir(), ".local", "bin", "herdr-core"),
+  ]);
+
+  const entries: BuildListEntry[] = [];
+  const stateFiles = fs
+    .readdirSync(STATE_DIRECTORY)
+    .filter((entry) => entry.endsWith(".json"))
+    .sort();
+
+  for (const stateFile of stateFiles) {
+    try {
+      const stateData = JSON.parse(
+        fs.readFileSync(path.join(STATE_DIRECTORY, stateFile), "utf-8")
+      ) as BuildState;
+
+      if (!includeAll && (stateData.deployed || stateData.stage === "COMPLETED")) {
+        continue;
+      }
+
+      const runningPid = readActiveLockPid(stateData.spec_id);
+      const liveTerminals: Array<{ id: string; name?: string; state?: string }> = [];
+
+      if (herdrCoreBinary && fs.existsSync(herdrCoreBinary)) {
+        const listResult = runCommand(
+          [herdrCoreBinary, "ls", "--label", `spec=${stateData.spec_id}`, "--json"],
+          { capture: true }
+        );
+        if (listResult.status === 0 && listResult.stdout.trim()) {
+          try {
+            const parsed = JSON.parse(listResult.stdout);
+            const terminals = Array.isArray(parsed) ? parsed : parsed?.terminals || [];
+            for (const terminal of terminals) {
+              if (terminal?.id) {
+                liveTerminals.push({
+                  id: terminal.id,
+                  name: terminal.name,
+                  state: terminal.state || terminal.status,
+                });
+              }
+            }
+          } catch {}
+        }
+      }
+
+      entries.push({
+        spec_id: stateData.spec_id,
+        spec_title: stateData.spec_title || stateData.spec_id,
+        project: stateData.project || "starfocus",
+        stage: stateData.stage || "DISCOVER_SPEC",
+        running_pid: runningPid,
+        live_terminals: liveTerminals,
+      });
+    } catch {}
+  }
+
+  return entries;
+}
+
+function promptLine(questionText: string): Promise<string> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(questionText, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
+async function runBuildList(includeAll: boolean, jsonOutput: boolean): Promise<number> {
+  const builds = listBuildsSnapshot(includeAll);
+
+  if (jsonOutput) {
+    console.log(JSON.stringify(builds, null, 2));
+    return 0;
+  }
+
+  if (builds.length === 0) {
+    console.log("No outstanding builds found.");
+    return 0;
+  }
+
+  console.log("\n📋 Outstanding Builds:");
+  builds.forEach((entry, index) => {
+    const liveSummary =
+      entry.live_terminals.length > 0
+        ? `hc: ${entry.live_terminals.map((t) => `${t.id}(${t.state || "live"})`).join(", ")}`
+        : entry.running_pid
+          ? `running (PID ${entry.running_pid})`
+          : "idle";
+    console.log(
+      `  [${index + 1}] ${entry.spec_id}  |  ${entry.project}  |  ${entry.stage}  |  ${liveSummary}`
+    );
+  });
+  console.log("");
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return 0;
+  }
+
+  const choice = await promptLine("Select build number to act on (or 'q' to quit): ");
+  if (!choice || choice.toLowerCase() === "q") {
+    return 0;
+  }
+
+  const selectedIndex = parseInt(choice, 10) - 1;
+  const selected = builds[selectedIndex];
+  if (!selected) {
+    console.error("❌ Invalid selection.");
+    return 1;
+  }
+
+  if (selected.live_terminals.length > 0) {
+    const targetTerminal = selected.live_terminals[0];
+    const herdrCoreBinary = findExecutable("hc", ["/usr/bin/herdr-core"]);
+    if (herdrCoreBinary) {
+      const attachAnswer = await promptLine(
+        `Live terminal ${targetTerminal.id} (${targetTerminal.name || "agent"}) found. Attach? [Y/n]: `
+      );
+      if (!attachAnswer || attachAnswer.toLowerCase().startsWith("y")) {
+        runCommand([herdrCoreBinary, "attach", targetTerminal.id], { capture: false });
+        return 0;
+      }
+    }
+  }
+
+  if (selected.running_pid !== null) {
+    console.log(`⚠️ Build '${selected.spec_id}' is already running (PID ${selected.running_pid}).`);
+    return 0;
+  }
+
+  if (
+    selected.stage === "AWAITING_PLAN_APPROVAL" ||
+    selected.stage === "AWAIT_PLAN_APPROVAL" ||
+    selected.stage === "AWAIT_HUMAN_REVIEW"
+  ) {
+    const isPlanGate =
+      selected.stage === "AWAITING_PLAN_APPROVAL" || selected.stage === "AWAIT_PLAN_APPROVAL";
+    const action = await promptLine("Action: [a]pprove / [f]eedback / [q]uit: ");
+    if (action.toLowerCase() === "a") {
+      const orchestrator = new BuildOrchestrator(
+        selected.spec_id,
+        undefined,
+        false,
+        undefined,
+        isPlanGate ? "plan" : "review",
+        false
+      );
+      return await orchestrator.execute();
+    }
+    if (action.toLowerCase() === "f") {
+      const feedback = await promptLine("Enter feedback: ");
+      if (!feedback) {
+        console.log("No feedback entered.");
+        return 0;
+      }
+      const orchestrator = new BuildOrchestrator(
+        selected.spec_id,
+        undefined,
+        false,
+        undefined,
+        false,
+        false,
+        feedback
+      );
+      return await orchestrator.execute();
+    }
+    return 0;
+  }
+
+  const orchestrator = new BuildOrchestrator(selected.spec_id);
+  return await orchestrator.execute();
+}
+
+function removeBuildState(specQuery: string): number {
+  if (!specQuery) {
+    console.error("❌ Usage: build rm <spec-id>");
+    return 1;
+  }
+
+  const stateFile = path.join(STATE_DIRECTORY, `${specQuery}.json`);
+  const lockFile = path.join(STATE_DIRECTORY, `${specQuery}.lock`);
+  const planFile = path.join(STATE_DIRECTORY, "plans", `${specQuery}.md`);
+
+  let removedAny = false;
+  for (const filePath of [stateFile, lockFile, planFile]) {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      removedAny = true;
+    }
+  }
+
+  if (!removedAny) {
+    console.error(`❌ No build state found for '${specQuery}'.`);
+    return 1;
+  }
+
+  console.log(`🗑️  Removed build state for '${specQuery}'.`);
+  return 0;
+}
+
 export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
   const { values, positionals } = parseArgs({
     args: rawArgs,
     options: {
+      prompt: { type: "string", short: "p" },
       "spec-id": { type: "string" },
       project: { type: "string" },
       "dry-run": { type: "boolean", default: false },
       status: { type: "boolean", default: false },
       approve: { type: "boolean", default: false },
+      "approve-plan": { type: "boolean", default: false },
+      "approve-review": { type: "boolean", default: false },
+      feedback: { type: "string" },
+      all: { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
     allowPositionals: true,
   });
 
+  const subcommand = positionals[0];
+  const isListCommand = subcommand === "ls";
+  const isRemoveCommand = subcommand === "rm";
   const isStatusCommand = positionals.includes("status") || Boolean(values.status);
-  const remainingPositionals = positionals.filter((arg) => arg !== "status");
+
+  const remainingPositionals = positionals.filter(
+    (arg) => arg !== "status" && arg !== "ls" && arg !== "rm"
+  );
 
   let specId = values["spec-id"];
-  let inlinePrompt: string | undefined;
+  const inlinePrompt = values.prompt?.trim() || undefined;
 
-  if (!specId && remainingPositionals.length === 1 && !remainingPositionals[0].includes(" ")) {
+  if (inlinePrompt && (specId || remainingPositionals.length > 0)) {
+    console.error("❌ Error: Cannot combine -p/--prompt with --spec-id or positional spec ID.");
+    process.exit(1);
+  }
+
+  if (!specId && !inlinePrompt && remainingPositionals.length === 1) {
     specId = remainingPositionals[0];
-  } else if (remainingPositionals.length > 0) {
-    inlinePrompt = remainingPositionals.join(" ").trim();
+  } else if (!inlinePrompt && remainingPositionals.length > 1) {
+    console.error(
+      "❌ Error: Positional prompt arguments are no longer supported. Use -p \"<prompt>\" instead."
+    );
+    process.exit(1);
   }
 
   if (isStatusCommand && !specId && !inlinePrompt) {
@@ -2007,8 +2347,16 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     if (currentDirectory.includes("/.worktrees/")) {
       specId = path.basename(currentDirectory);
     } else {
-      const branchRes = runCommand(["git", "rev-parse", "--abbrev-ref", "HEAD"], { cwd: currentDirectory, capture: true });
-      if (branchRes.status === 0 && branchRes.stdout.trim() && branchRes.stdout.trim() !== "master" && branchRes.stdout.trim() !== "main") {
+      const branchRes = runCommand(["git", "rev-parse", "--abbrev-ref", "HEAD"], {
+        cwd: currentDirectory,
+        capture: true,
+      });
+      if (
+        branchRes.status === 0 &&
+        branchRes.stdout.trim() &&
+        branchRes.stdout.trim() !== "master" &&
+        branchRes.stdout.trim() !== "main"
+      ) {
         specId = branchRes.stdout.trim();
       }
     }
@@ -2018,28 +2366,48 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     }
   }
 
-  if (values.help || (!inlinePrompt && !specId)) {
-    console.log('Usage: build "<prompt>" [options]');
-    console.log("       build --spec-id <id> [options]");
+  if (values.help || (!isListCommand && !isRemoveCommand && !inlinePrompt && !specId)) {
+    console.log('Usage: build -p "<prompt>" [options]');
+    console.log("       build <spec-id> [options]");
+    console.log("       build ls [--all] [--json]");
+    console.log("       build rm <spec-id>");
     console.log("       build status");
-    console.log("\nAgentic coding workflow build orchestrator powered by Antigravity and Herdr.");
-    console.log("\nPositional arguments:");
-    console.log("  prompt                Inline feature prompt to plan and build.");
+    console.log("\nAgentic coding workflow build orchestrator powered by Antigravity and herdr-core.");
     console.log("\nOptions:");
-    console.log("  --spec-id <id>        Pre-written spec identifier, slug, or file path in Obsidian todos.");
+    console.log("  -p, --prompt <text>   Inline feature prompt to plan and build.");
+    console.log("  --spec-id <id>        Pre-written spec identifier, slug, or file path.");
     console.log("  --project <project>   Override inferred target project (e.g. banerry, starfocus).");
-    console.log("  --approve             Approve plan or human review gate and advance workflow.");
+    console.log("  --approve-plan        Approve technical plan gate.");
+    console.log("  --approve-review      Approve human review gate and merge/push.");
+    console.log("  --approve             Approve current gate (plan or review).");
+    console.log("  --feedback <text>     Provide feedback to replan or update implementation.");
+    console.log("  --all                 Include completed builds in 'build ls'.");
+    console.log("  --json                Output JSON in 'build ls'.");
     console.log("  --dry-run             Inspect external state and planned actions without side effects.");
     console.log("  --status              Display current build lifecycle state.");
     console.log("  -h, --help            Show this help message and exit.");
     process.exit(values.help ? 0 : 1);
   }
 
+  let approveScope: ApproveScope | undefined;
+  if (values["approve-plan"]) {
+    approveScope = "plan";
+  } else if (values["approve-review"]) {
+    approveScope = "review";
+  } else if (values.approve) {
+    approveScope = "any";
+  }
+
   return {
+    command: isListCommand ? ("ls" as const) : isRemoveCommand ? ("rm" as const) : ("run" as const),
     prompt: inlinePrompt,
     specId: specId || "",
     project: values.project,
-    approve: Boolean(values.approve),
+    approve: Boolean(approveScope),
+    approveScope,
+    feedback: values.feedback?.trim() || undefined,
+    includeAll: Boolean(values.all),
+    jsonOutput: Boolean(values.json),
     dryRun: Boolean(values["dry-run"] || isStatusCommand),
     statusOnly: isStatusCommand,
   };
@@ -2047,13 +2415,25 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
 
 async function main() {
   const parsedArguments = parseArguments();
+
+  if (parsedArguments.command === "ls") {
+    const exitCode = await runBuildList(parsedArguments.includeAll, parsedArguments.jsonOutput);
+    process.exit(exitCode);
+  }
+
+  if (parsedArguments.command === "rm") {
+    const exitCode = removeBuildState(parsedArguments.specId);
+    process.exit(exitCode);
+  }
+
   const orchestrator = new BuildOrchestrator(
     parsedArguments.specId,
     parsedArguments.project,
     parsedArguments.dryRun,
     parsedArguments.prompt,
-    parsedArguments.approve,
-    parsedArguments.statusOnly
+    parsedArguments.approveScope ?? false,
+    parsedArguments.statusOnly,
+    parsedArguments.feedback
   );
   const exitCode = await orchestrator.execute();
   process.exit(exitCode);
