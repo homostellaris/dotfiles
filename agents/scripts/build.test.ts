@@ -233,6 +233,7 @@ Here is the specification details.
     feedbackOrchestrator.state = {
       spec_id: "canvas-section_y2vtpcom",
       title: "Canvas Section",
+      effort: 3,
       repo_dir: process.cwd(),
       stage: "AWAIT_HUMAN_REVIEW",
       branch_name: "canvas-section_y2vtpcom",
@@ -255,6 +256,7 @@ Here is the specification details.
     feedbackOrchestrator.state = {
       spec_id: "canvas-section_y2vtpcom",
       title: "Canvas Section",
+      effort: 3,
       repo_dir: process.cwd(),
       stage: "AWAIT_HUMAN_REVIEW",
       branch_name: "canvas-section_y2vtpcom",
@@ -421,6 +423,9 @@ Here is the specification details.
     effortOneOrchestrator.runLocalTestGate = () => true;
 
     expect(effortOneOrchestrator.determineExternalState()).toBe("MERGE_AND_PUSH");
+
+    const defaultEffortOrchestrator = new BuildOrchestrator("", "starfocus", true, "Quick fix");
+    expect(defaultEffortOrchestrator.getActiveEffort()).toBe(1);
   });
 
   it("resolves stage models via MODEL_TIERS across effort levels 1, 2, and 3", () => {

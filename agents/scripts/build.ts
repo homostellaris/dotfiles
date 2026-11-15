@@ -59,7 +59,7 @@ export const STAGE_MODELS = {
 
 export function getStageModel(
   stage: keyof typeof STAGE_MODEL_TIERS,
-  effort: BuildEffort = 3
+  effort: BuildEffort = 1
 ): string {
   if (effort === 1) {
     return MODEL_TIERS.fast;
@@ -535,7 +535,7 @@ export class BuildOrchestrator {
   }
 
   getActiveEffort(): BuildEffort {
-    return this.effort || this.state?.effort || 3;
+    return this.effort || this.state?.effort || 1;
   }
 
   loadOrInitializeState(spec: SpecMetadata): BuildState {
@@ -554,7 +554,7 @@ export class BuildOrchestrator {
         const data = JSON.parse(raw);
         const state: BuildState = {
           ...data,
-          effort: this.effort || data.effort || 3,
+          effort: this.effort || data.effort || 1,
           repo_dir: repoDir,
           worktree_dir: worktreeDir,
           branch_name: branchName,
@@ -567,7 +567,7 @@ export class BuildOrchestrator {
       spec_id: spec.identifier,
       spec_path: spec.filePath,
       spec_title: spec.title,
-      effort: this.effort || 3,
+      effort: this.effort || 1,
       prompt: spec.prompt,
       project: spec.targetProject,
       repo_dir: repoDir,
@@ -2197,7 +2197,7 @@ export function listBuildsSnapshot(includeAll: boolean = false): BuildListEntry[
         spec_id: stateData.spec_id,
         spec_title: stateData.spec_title || stateData.spec_id,
         project: stateData.project || "starfocus",
-        effort: stateData.effort || 3,
+        effort: stateData.effort || 1,
         stage: stateData.stage || "DISCOVER_SPEC",
         running_pid: runningPid,
         live_terminals: liveTerminals,
@@ -2430,7 +2430,7 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     console.log("\nAgentic coding workflow build orchestrator powered by Antigravity and herdr-core.");
     console.log("\nOptions:");
     console.log("  -p, --prompt <text>   Inline feature prompt to plan and build.");
-    console.log("  -e, --effort <1|2|3>  Workflow effort: 1 (single agent), 2 (impl + review), 3 (plan + impl + review, default).");
+    console.log("  -e, --effort <1|2|3>  Workflow effort: 1 (single agent, default), 2 (impl + review), 3 (plan + impl + review).");
     console.log("  --spec-id <id>        Pre-written spec identifier, slug, or file path.");
     console.log("  --project <project>   Override inferred target project (e.g. banerry, starfocus).");
     console.log("  --approve-plan        Approve technical plan gate.");
