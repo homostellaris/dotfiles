@@ -458,4 +458,61 @@ Here is the specification details.
       expect(developmentUrls.tailscaleUrl.endsWith(":6601")).toBe(true);
     }
   });
+
+  it("returns 1 from handleImplementation when tests still fail after repair", async () => {
+    const implementationOrchestrator = new BuildOrchestrator("test-spec", "dotfiles", true);
+    implementationOrchestrator.spec = {
+      identifier: "test-spec",
+      filePath: "",
+      title: "Test Spec",
+      content: "Test Spec",
+      targetProject: "dotfiles",
+    };
+    implementationOrchestrator.state = {
+      spec_id: "test-spec",
+      spec_path: "",
+      spec_title: "Test Spec",
+      project: "dotfiles",
+      repo_dir: "/tmp/repo",
+      worktree_dir: "/tmp/worktree",
+      stage: "IMPLEMENT_AND_FIX_LOCAL",
+      plan_approved: true,
+      pr_approved: false,
+      verifier_passed: false,
+      merged: false,
+      deployed: false,
+      history: [],
+    };
+    const spawnedRoles: string[] = [];
+    implementationOrchestrator.runAgentInHerdrCore = async (role) => {
+      spawnedRoles.push(role);
+      return true;
+    };
+
+    implementationOrchestrator.runLocalTestGate = () => spawnedRoles.includes("repair");
+    expect(await implementationOrchestrator.handleImplementation()).toBe(0);
+    expect(spawnedRoles).toEqual(["impl", "repair"]);
+
+    spawnedRoles.length = 0;
+    implementationOrchestrator.runLocalTestGate = () => false;
+    expect(await implementationOrchestrator.handleImplementation()).toBe(1);
+    expect(spawnedRoles).toEqual(["impl", "repair"]);
+  });
+
+  it("times out waitForHerdrCoreTurn when maxWaitMilliseconds is exceeded", () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-wait-timeout-"));
+    const fakeHerdrBinary = path.join(temporaryDirectory, "hc");
+    fs.writeFileSync(
+      fakeHerdrBinary,
+      "#!/bin/sh\necho '{\"reason\":\"timeout\",\"status\":\"working\"}'\n",
+      { mode: 0o755 }
+    );
+    try {
+      const waitOutcome = orchestrator.waitForHerdrCoreTurn(fakeHerdrBinary, "term-1", 0);
+      expect(waitOutcome.completed).toBe(false);
+      expect(waitOutcome.status).toBe("timed_out");
+    } finally {
+      fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
 });

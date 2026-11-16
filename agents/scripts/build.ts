@@ -803,59 +803,6 @@ export class BuildOrchestrator {
     return "PENDING_APPROVAL";
   }
 
-  findLatestTranscriptForSpec(specId: string): string | null {
-    const brainDir = path.join(ANTIGRAVITY_APP_DATA, "brain");
-    if (!fs.existsSync(brainDir)) {
-      return null;
-    }
-
-    const folders = fs
-      .readdirSync(brainDir, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => path.join(brainDir, d.name))
-      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-
-    for (const folder of folders) {
-      const planFile = path.join(folder, `${specId}.html`);
-      if (fs.existsSync(planFile)) {
-        return path.join(folder, ".system_generated", "logs", "transcript.jsonl");
-      }
-      const transcript = path.join(folder, ".system_generated", "logs", "transcript.jsonl");
-      if (fs.existsSync(transcript)) {
-        try {
-          const content = fs.readFileSync(transcript, "utf-8");
-          if (content.includes(`impl-${specId}`) || content.includes(`planner-${specId}`)) {
-            return transcript;
-          }
-        } catch {}
-      }
-    }
-    return null;
-  }
-
-  inspectTranscriptForApproval(transcriptPath: string): string {
-    try {
-      const content = fs.readFileSync(transcriptPath, "utf-8");
-      const lines = content.trim().split("\n");
-
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const line = lines[i];
-        if (!line.trim()) continue;
-        const data = JSON.parse(line);
-        if (data.type === "USER_INPUT") {
-          const userContent = String(data.content || "").toLowerCase();
-          if (/\b(proceed|approve|approved|looks good|ship it|yes|lgtm)\b/i.test(userContent)) {
-            return "APPROVED";
-          }
-          if (/\b(change|fix|update|revise|instead)\b/i.test(userContent)) {
-            return "FEEDBACK";
-          }
-        }
-      }
-    } catch {}
-    return "PENDING";
-  }
-
   isWorktreeInitialized(worktreeDir?: string): boolean {
     if (!worktreeDir) return false;
     return fs.existsSync(worktreeDir) && fs.existsSync(path.join(worktreeDir, ".git"));
@@ -993,50 +940,6 @@ export class BuildOrchestrator {
     }
 
     return "PENDING";
-  }
-
-  inspectTranscriptForReviewApproval(transcriptPath: string, sinceIso?: string): string {
-    try {
-      const content = fs.readFileSync(transcriptPath, "utf-8");
-      const lines = content.trim().split("\n");
-
-      for (let index = lines.length - 1; index >= 0; index--) {
-        const line = lines[index];
-        if (!line.trim()) continue;
-        const entry = JSON.parse(line);
-        if (sinceIso && entry.created_at && entry.created_at <= sinceIso) {
-          break;
-        }
-        if (entry.type === "USER_INPUT") {
-          const userContent = String(entry.content || "").toLowerCase();
-          if (/\b(proceed|approve|approved|looks good|ship it|yes|lgtm)\b/i.test(userContent)) {
-            return "APPROVED";
-          }
-          if (/\b(change|fix|update|revise|instead|broken|issue)\b/i.test(userContent)) {
-            return "FEEDBACK";
-          }
-        }
-      }
-    } catch {}
-    return "PENDING";
-  }
-
-  getLatestFeedbackFromTranscript(transcriptPath: string): string {
-    try {
-      const content = fs.readFileSync(transcriptPath, "utf-8");
-      const lines = content.trim().split("\n");
-
-      for (let index = lines.length - 1; index >= 0; index--) {
-        const line = lines[index];
-        if (!line.trim()) continue;
-        const entry = JSON.parse(line);
-        if (entry.type === "USER_INPUT") {
-          const feedbackText = String(entry.content || "").trim();
-          if (feedbackText) return feedbackText;
-        }
-      }
-    } catch {}
-    return "";
   }
 
   getWorktreePort(worktreeDirectory?: string): number {
@@ -1393,12 +1296,16 @@ export class BuildOrchestrator {
       const repairPrompt =
         `Local test suite failed in '${this.state.worktree_dir}' for plan '${planPath}'. ` +
         `Please inspect failure output, fix errors, and verify passing status.`;
-      await this.runAgentInHerdrCore(
+      const repairSuccess = await this.runAgentInHerdrCore(
         "repair",
         repairPrompt,
         this.state.worktree_dir,
         getStageModel("repair", this.getActiveEffort())
       );
+      if (!repairSuccess || !this.runLocalTestGate(this.state.worktree_dir)) {
+        console.error("❌ Local tests still failing after repair pass.");
+        return 1;
+      }
     }
 
     console.log("✅ Local verification complete.");
@@ -1806,8 +1713,10 @@ export class BuildOrchestrator {
 
   waitForHerdrCoreTurn(
     herdrCoreBinary: string,
-    terminalAddress: string
+    terminalAddress: string,
+    maxWaitMilliseconds: number = 30 * 60 * 1000
   ): { completed: boolean; status: string; exitCode: number | null } {
+    const startedAtMilliseconds = Date.now();
     while (true) {
       const waitResult = runCommand([herdrCoreBinary, "wait", terminalAddress, "--json"], {
         capture: true,
@@ -1818,6 +1727,9 @@ export class BuildOrchestrator {
       const exitCode = typeof parsed?.exit_code === "number" ? parsed.exit_code : null;
 
       if (reason === "timeout" || reason === "message") {
+        if (Date.now() - startedAtMilliseconds >= maxWaitMilliseconds) {
+          return { completed: false, status: "timed_out", exitCode };
+        }
         continue;
       }
 
@@ -1880,9 +1792,9 @@ export class BuildOrchestrator {
             console.log(`⏳ Terminal '${terminalName}' (${terminalAddress}) is still working. Waiting for turn...`);
             const preWait = this.waitForHerdrCoreTurn(herdrCoreBinary, terminalAddress);
             if (!preWait.completed) {
-              if (preWait.status === "blocked") {
+              if (preWait.status === "blocked" || preWait.status === "timed_out") {
                 shouldCleanup = false;
-                console.warn(`⚠️ Terminal '${terminalName}' (${terminalAddress}) is blocked. Attach with: hc attach ${terminalAddress}`);
+                console.warn(`⚠️ Terminal '${terminalName}' (${terminalAddress}) ${preWait.status}. Attach with: hc attach ${terminalAddress}`);
               }
               return false;
             }
@@ -1941,9 +1853,9 @@ export class BuildOrchestrator {
 
         const readyWait = this.waitForHerdrCoreTurn(herdrCoreBinary, terminalAddress);
         if (!readyWait.completed) {
-          if (readyWait.status === "blocked") {
+          if (readyWait.status === "blocked" || readyWait.status === "timed_out") {
             shouldCleanup = false;
-            console.warn(`⚠️ Terminal '${terminalName}' (${terminalAddress}) is blocked during startup. Attach with: hc attach ${terminalAddress}`);
+            console.warn(`⚠️ Terminal '${terminalName}' (${terminalAddress}) ${readyWait.status} during startup. Attach with: hc attach ${terminalAddress}`);
           }
           return false;
         }
@@ -1965,11 +1877,11 @@ export class BuildOrchestrator {
       if (sendReason === "timeout" || sendReason === "message") {
         const turnResult = this.waitForHerdrCoreTurn(herdrCoreBinary, terminalAddress);
         if (!turnResult.completed) {
-          if (turnResult.status === "blocked") {
+          if (turnResult.status === "blocked" || turnResult.status === "timed_out") {
             shouldCleanup = false;
-            console.warn(`⚠️ Terminal '${terminalName}' (${terminalAddress}) is blocked. Attach with: hc attach ${terminalAddress}`);
+            console.warn(`⚠️ Terminal '${terminalName}' (${terminalAddress}) ${turnResult.status}. Attach with: hc attach ${terminalAddress}`);
             this.sendOpenclawNotification(
-              `⚠️ Terminal '${terminalName}' (${terminalAddress}) is blocked for '${specIdentifier}'. Run: hc attach ${terminalAddress}`
+              `⚠️ Terminal '${terminalName}' (${terminalAddress}) ${turnResult.status} for '${specIdentifier}'. Run: hc attach ${terminalAddress}`
             );
           }
           return false;
