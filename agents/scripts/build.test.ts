@@ -429,6 +429,9 @@ Here is the specification details.
     effortOneOrchestrator.hasUncommittedChanges = () => false;
     effortOneOrchestrator.runLocalTestGate = () => true;
 
+    expect(effortOneOrchestrator.determineExternalState()).toBe("AWAIT_HUMAN_REVIEW");
+
+    effortOneOrchestrator.state.human_reviewed = true;
     expect(effortOneOrchestrator.determineExternalState()).toBe("MERGE_AND_PUSH");
 
     const defaultEffortOrchestrator = new BuildOrchestrator("", "starfocus", true, "Quick fix");

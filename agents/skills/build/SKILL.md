@@ -43,12 +43,12 @@ build rm <spec-id>
 
 ## Choosing `--effort` (Token & Speed Guidance)
 
-Always pick the lowest effort level that fits the task:
+**Every** effort level pauses at the **Human Review Gate** (`AWAIT_HUMAN_REVIEW`) with a Tailscale preview URL and task dashboard so Dan can always review the diff (and optionally `symboldiff`) and test before merging. `--effort` only controls **agent count and model tier** — always pick the lowest effort level that fits the task:
 
 | Effort | Flag | Pipeline | Models Used | When to Use |
 | :--- | :--- | :--- | :--- | :--- |
-| **1 (Default)** | `-e 1` (or omit) | Worktree → Implement + Test Gate → Merge & Push | `gemini-4-hydrogen-high` | **Small, clear tasks:** bug fixes, typos, single-file edits, well-defined tweaks. Cheapest and fastest; no human pause gates. |
-| **2** | `-e 2` | Worktree → Implement + Test Gate → **Human Review Gate** → Verify → Merge & Push | `gemini-4-hydrogen-high` (impl/repair), `claude-sonnet-5-5-high` (verifier) | **Medium features / UI changes:** when you want to inspect the Tailscale preview or diff (`--approve-review` / `--feedback`) before it merges. |
+| **1 (Default)** | `-e 1` (or omit) | Worktree → Implement + Test Gate → **Human Review Gate** → Merge & Push | `gemini-4-hydrogen-high` | **Small, clear tasks:** bug fixes, typos, single-file edits, well-defined tweaks. Single fast agent; cheapest and fastest, still pauses for human review. |
+| **2** | `-e 2` | Worktree → Implement + Test Gate → **Human Review Gate** → Verify → Merge & Push | `gemini-4-hydrogen-high` (impl/repair), `claude-sonnet-5-5-high` (verifier) | **Medium features:** when you also want a Sonnet verifier pass in addition to human review. |
 | **3** | `-e 3` | **Planner** → **Plan Approval Gate** → Worktree → Implement → **Human Review Gate** → Verify → Merge & Push | `gemini-4-argon-high` (plan/impl), `gemini-4-hydrogen-high` (repair), `claude-opus-5-5-high` (verifier) | **Large or architectural work:** multi-file features, schema/data-model changes, ambiguous specs, or anything needing an explicit technical plan first. |
 
 ## Project & Directory Targeting

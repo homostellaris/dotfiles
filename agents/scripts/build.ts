@@ -754,14 +754,12 @@ export class BuildOrchestrator {
       return "IMPLEMENT_AND_FIX_LOCAL";
     }
 
-    if (activeEffort >= 2) {
-      const humanReviewStatus = this.checkHumanReviewStatus();
-      if (humanReviewStatus === "FEEDBACK_RECEIVED") {
-        return "RESOLVE_FEEDBACK";
-      }
-      if (humanReviewStatus !== "APPROVED") {
-        return "AWAIT_HUMAN_REVIEW";
-      }
+    const humanReviewStatus = this.checkHumanReviewStatus();
+    if (humanReviewStatus === "FEEDBACK_RECEIVED") {
+      return "RESOLVE_FEEDBACK";
+    }
+    if (humanReviewStatus !== "APPROVED") {
+      return "AWAIT_HUMAN_REVIEW";
     }
 
     if (this.state.deployed) {
@@ -1519,7 +1517,7 @@ export class BuildOrchestrator {
     this.state.dev_url = tailscaleUrl;
     this.state.stage = "AWAIT_HUMAN_REVIEW";
     this.state.human_review_requested_at = new Date().toISOString();
-    this.publishTaskDashboard("HUMAN REVIEW");
+    const dashboardUrl = this.publishTaskDashboard("HUMAN REVIEW");
     this.saveState(this.state);
 
     console.log("\n==================================================");
@@ -1527,6 +1525,7 @@ export class BuildOrchestrator {
     console.log("==================================================");
     console.log(`🌐 Local Dev Server:   ${localUrl}`);
     console.log(`📱 Tailscale Dev URL:  ${tailscaleUrl}`);
+    console.log(`📊 Task Dashboard:     ${dashboardUrl}`);
     console.log(`✨ Vercel Toolbar:     Active for visual comments and annotations in-browser`);
     console.log(`👉 Send feedback:      build --spec ${this.spec.identifier} --feedback "<your comments>"`);
     console.log(`👉 Or manage via:      build ls`);
@@ -1538,6 +1537,7 @@ export class BuildOrchestrator {
       `⏸️ [Human Review Required] '${this.spec.title}' is ready for review!\n` +
       `🌐 Local: ${localUrl}\n` +
       `📱 Tailscale: ${tailscaleUrl}\n` +
+      `📊 Dashboard: ${dashboardUrl}\n` +
       `✨ Use Vercel Toolbar for comments, 'build --spec ${this.spec.identifier} --feedback "..."', or 'build ls'.\n` +
       `Run 'build --spec ${this.spec.identifier} --approve-review' to merge.`;
     this.sendOpenclawNotification(notificationMessage);
@@ -2359,7 +2359,7 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     console.log("\nOptions:");
     console.log("  -p, --prompt <text>   Inline feature prompt to plan and build.");
     console.log("  -s, --spec <id>       Pre-written spec identifier, slug, or file path.");
-    console.log("  -e, --effort <1|2|3>  Workflow effort: 1 (single agent, default), 2 (impl + review), 3 (plan + impl + review).");
+    console.log("  -e, --effort <1|2|3>  Agent/model tier: 1 (fast single agent, default), 2 (fast + verifier), 3 (capable plan + impl + verifier). Always pauses for review.");
     console.log("  -C, --cwd <dir>       Override working directory for project/repo resolution.");
     console.log("  --project <project>   Override target project name.");
     console.log("  --approve-plan        Approve technical plan gate.");
