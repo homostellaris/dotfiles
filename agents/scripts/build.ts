@@ -1866,8 +1866,15 @@ export class BuildOrchestrator {
         { capture: true }
       );
       const sendJson = this.parseHerdrCoreJson(sendResult.stdout);
-      const sendReason = sendJson?.reason;
-      const sendStatus = sendJson?.status || sendJson?.state || "";
+      const waitPayload = sendJson?.wait ?? sendJson;
+      const sendReason = waitPayload?.reason ?? sendJson?.reason;
+      const sendStatus = waitPayload?.status || sendJson?.status || sendJson?.state || "";
+      const sendExitCode =
+        typeof waitPayload?.exit_code === "number"
+          ? waitPayload.exit_code
+          : typeof sendJson?.exit_code === "number"
+            ? sendJson.exit_code
+            : null;
 
       if (sendResult.status !== 0 && sendReason !== "timeout" && sendReason !== "message") {
         console.error(`❌ herdr-core send error: ${sendResult.stderr || sendResult.stdout}`);
@@ -1898,7 +1905,7 @@ export class BuildOrchestrator {
         return false;
       }
 
-      if (sendStatus === "error" || (typeof sendJson?.exit_code === "number" && sendJson.exit_code !== 0)) {
+      if (sendStatus === "error" || (sendExitCode !== null && sendExitCode !== 0)) {
         return false;
       }
 

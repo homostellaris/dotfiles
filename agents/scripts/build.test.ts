@@ -518,4 +518,47 @@ Here is the specification details.
       fs.rmSync(temporaryDirectory, { recursive: true, force: true });
     }
   });
+
+  it("continues waiting via waitForHerdrCoreTurn when hc send returns nested wait.reason timeout", async () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-send-nested-"));
+    const fakeHerdrBinary = path.join(temporaryDirectory, "hc");
+    const invocationLog = path.join(temporaryDirectory, "calls.log");
+    fs.writeFileSync(
+      fakeHerdrBinary,
+      `#!/bin/sh
+echo "$1" >> "${invocationLog}"
+case "$1" in
+  get)
+    exit 3
+    ;;
+  run)
+    echo '{"id":"term-nested-1"}'
+    ;;
+  wait)
+    echo '{"reason":"done","status":"idle","exit_code":0}'
+    ;;
+  send)
+    echo '{"started":null,"status":null,"turn":0,"wait":{"reason":"timeout","status":null,"exit_code":null}}'
+    ;;
+  kill|rm)
+    exit 0
+    ;;
+esac
+`,
+      { mode: 0o755 }
+    );
+
+    const testOrchestrator = new BuildOrchestrator(undefined, temporaryDirectory) as any;
+    testOrchestrator.findHerdrCoreBinary = () => fakeHerdrBinary;
+    testOrchestrator.ensureHerdrCore = () => true;
+
+    try {
+      const succeeded = await testOrchestrator.runAgentInHerdrCore("impl", "hello", temporaryDirectory, "gemini-flash");
+      expect(succeeded).toBe(true);
+      const recordedCalls = fs.readFileSync(invocationLog, "utf-8").trim().split("\n");
+      expect(recordedCalls.filter((command) => command === "wait").length).toBe(2);
+    } finally {
+      fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
 });
