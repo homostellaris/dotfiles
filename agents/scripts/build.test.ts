@@ -561,4 +561,73 @@ esac
       fs.rmSync(temporaryDirectory, { recursive: true, force: true });
     }
   });
+
+  it("does not re-poll Vercel toolbar comments immediately after RESOLVE_FEEDBACK", () => {
+    const feedbackOrchestrator = new BuildOrchestrator("canvas-section_y2vtpcom") as any;
+    let fetchCalls = 0;
+    feedbackOrchestrator.spec = { identifier: "canvas-section_y2vtpcom", title: "Canvas Section" };
+    feedbackOrchestrator.state = {
+      spec_id: "canvas-section_y2vtpcom",
+      stage: "RESOLVE_FEEDBACK",
+      branch_name: "canvas-section_y2vtpcom",
+      repo_dir: "/tmp/repo",
+      worktree_dir: "/tmp/worktree",
+    };
+    feedbackOrchestrator.fetchVercelToolbarComments = () => {
+      fetchCalls += 1;
+      return { count: 1, summary: "- unresolved comment" };
+    };
+
+    expect(feedbackOrchestrator.checkHumanReviewStatus()).toBe("PENDING");
+    expect(fetchCalls).toBe(0);
+  });
+
+  it("generates and publishes symboldiff during handleAwaitHumanReview", () => {
+    const reviewOrchestrator = new BuildOrchestrator("canvas-section_y2vtpcom") as any;
+    let publishedStatus = "";
+    let publishedSymboldiff: string | undefined;
+
+    reviewOrchestrator.spec = { identifier: "canvas-section_y2vtpcom", title: "Canvas Section" };
+    reviewOrchestrator.state = {
+      spec_id: "canvas-section_y2vtpcom",
+      stage: "IMPLEMENT_AND_FIX_LOCAL",
+      branch_name: "canvas-section_y2vtpcom",
+      repo_dir: "/tmp/repo",
+      worktree_dir: "/tmp/worktree",
+    };
+    reviewOrchestrator.getWorktreePort = () => 6602;
+    reviewOrchestrator.ensureDevServerRunning = () => {};
+    reviewOrchestrator.generateWorktreeSymboldiff = () => "/tmp/canvas-section_y2vtpcom-symboldiff.html";
+    reviewOrchestrator.publishTaskDashboard = (status: string, symboldiffPath?: string) => {
+      publishedStatus = status;
+      publishedSymboldiff = symboldiffPath;
+      return "https://omarchy.tail29c7da.ts.net/canvas-section_y2vtpcom/";
+    };
+    reviewOrchestrator.saveState = () => {};
+    reviewOrchestrator.sendOpenclawNotification = () => {};
+
+    reviewOrchestrator.handleAwaitHumanReview();
+    expect(publishedStatus).toBe("HUMAN REVIEW");
+    expect(publishedSymboldiff).toBe("/tmp/canvas-section_y2vtpcom-symboldiff.html");
+  });
+
+  it("ignores already-addressed Vercel toolbar comments with matching hash", () => {
+    const reviewOrchestrator = new BuildOrchestrator("canvas-section_y2vtpcom") as any;
+    const rawComments = "1 unresolved comment on canvas-section_y2vtpcom\n- fix spacing";
+    reviewOrchestrator.spec = { identifier: "canvas-section_y2vtpcom", title: "Canvas Section" };
+    reviewOrchestrator.state = {
+      spec_id: "canvas-section_y2vtpcom",
+      stage: "AWAIT_HUMAN_REVIEW",
+      branch_name: "canvas-section_y2vtpcom",
+      repo_dir: "/tmp/repo",
+      worktree_dir: "/tmp/worktree",
+      addressed_toolbar_hash: reviewOrchestrator.hashToolbarComments(rawComments),
+    };
+    reviewOrchestrator.fetchVercelToolbarComments = () => ({
+      count: 1,
+      rawOutput: rawComments,
+    });
+
+    expect(reviewOrchestrator.checkHumanReviewStatus()).toBe("PENDING");
+  });
 });

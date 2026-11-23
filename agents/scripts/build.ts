@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import child_process from "node:child_process";
+import crypto from "node:crypto";
 import readline from "node:readline";
 import { parseArgs } from "node:util";
 
@@ -163,6 +164,7 @@ export interface BuildState {
   repo_tests_passed?: boolean;
   human_reviewed?: boolean;
   human_review_requested_at?: string;
+  addressed_toolbar_hash?: string;
   dev_url?: string;
   pr_number?: number;
   pr_url?: string;
@@ -856,6 +858,10 @@ export class BuildOrchestrator {
     };
   }
 
+  hashToolbarComments(rawOutput: string): string {
+    return crypto.createHash("sha256").update(rawOutput).digest("hex");
+  }
+
   fetchVercelToolbarComments(repositoryDirectory: string, branchName?: string): { count: number; rawOutput: string } {
     if (!branchName) return { count: 0, rawOutput: "" };
 
@@ -932,6 +938,10 @@ export class BuildOrchestrator {
     if (branchName) {
       const toolbarComments = this.fetchVercelToolbarComments(repositoryDirectory, branchName);
       if (toolbarComments.count > 0) {
+        const currentHash = this.hashToolbarComments(toolbarComments.rawOutput);
+        if (this.state?.addressed_toolbar_hash && this.state.addressed_toolbar_hash === currentHash) {
+          return "PENDING";
+        }
         console.log(`💬 Found ${toolbarComments.count} unresolved Vercel toolbar comment(s) on branch '${branchName}'`);
         return "FEEDBACK_RECEIVED";
       }
@@ -1517,7 +1527,8 @@ export class BuildOrchestrator {
     this.state.dev_url = tailscaleUrl;
     this.state.stage = "AWAIT_HUMAN_REVIEW";
     this.state.human_review_requested_at = new Date().toISOString();
-    const dashboardUrl = this.publishTaskDashboard("HUMAN REVIEW");
+    const symboldiffPath = this.generateWorktreeSymboldiff();
+    const dashboardUrl = this.publishTaskDashboard("HUMAN REVIEW", symboldiffPath);
     this.saveState(this.state);
 
     console.log("\n==================================================");
@@ -1594,7 +1605,11 @@ export class BuildOrchestrator {
 
     if (this.state) {
       this.state.pending_feedback = undefined;
+      this.state.stage = "RESOLVE_FEEDBACK";
       this.state.human_review_requested_at = new Date().toISOString();
+      if (toolbarComments.count > 0 && toolbarComments.rawOutput) {
+        this.state.addressed_toolbar_hash = this.hashToolbarComments(toolbarComments.rawOutput);
+      }
       this.saveState(this.state);
     }
 
@@ -1941,6 +1956,35 @@ export class BuildOrchestrator {
     return false;
   }
 
+  generateWorktreeSymboldiff(): string | undefined {
+    if (!this.spec || !this.state || !this.state.worktree_dir || !this.state.repo_dir) {
+      return undefined;
+    }
+
+    const symboldiffScript = findExecutable("symboldiff.mjs", [
+      path.join(os.homedir(), ".agents", "skills", "symboldiff", "scripts", "symboldiff.mjs"),
+      path.join(os.homedir(), ".gemini", "config", "skills", "symboldiff", "scripts", "symboldiff.mjs"),
+      path.join(os.homedir(), "code", "homostellaris", "dotfiles", "agents", "skills", "symboldiff", "scripts", "symboldiff.mjs"),
+    ]);
+    if (!symboldiffScript || !fs.existsSync(symboldiffScript)) {
+      return undefined;
+    }
+
+    if (!fs.existsSync(STATE_DIRECTORY)) {
+      fs.mkdirSync(STATE_DIRECTORY, { recursive: true });
+    }
+    const outputPath = path.join(STATE_DIRECTORY, `${this.spec.identifier}-symboldiff.html`);
+    const defaultBranch = getDefaultBranch(this.state.repo_dir);
+    const result = runCommand(
+      [symboldiffScript, "--no-open", "--out", outputPath, defaultBranch],
+      { cwd: this.state.worktree_dir, capture: true }
+    );
+    if (result.status !== 0 || !fs.existsSync(outputPath)) {
+      return undefined;
+    }
+    return outputPath;
+  }
+
   publishTaskDashboard(status: string = "PLAN REVIEW", symboldiffPath?: string): string {
     if (!this.spec || !this.state) return "";
 
@@ -2220,8 +2264,9 @@ async function runBuildList(includeAll: boolean, jsonOutput: boolean): Promise<n
   ) {
     const isPlanGate =
       selected.stage === "AWAITING_PLAN_APPROVAL" || selected.stage === "AWAIT_PLAN_APPROVAL";
-    const action = await promptLine("Action: [a]pprove / [f]eedback / [q]uit: ");
-    if (action.toLowerCase() === "a") {
+    const action = await promptLine("Action: [a]pprove / [f]eedback / [r]esume / [q]uit: ");
+    const normalizedAction = action.trim().toLowerCase();
+    if (normalizedAction === "a") {
       const orchestrator = new BuildOrchestrator(
         selected.spec_id,
         undefined,
@@ -2232,7 +2277,7 @@ async function runBuildList(includeAll: boolean, jsonOutput: boolean): Promise<n
       );
       return await orchestrator.execute();
     }
-    if (action.toLowerCase() === "f") {
+    if (normalizedAction === "f") {
       const feedback = await promptLine("Enter feedback: ");
       if (!feedback) {
         console.log("No feedback entered.");
@@ -2249,7 +2294,9 @@ async function runBuildList(includeAll: boolean, jsonOutput: boolean): Promise<n
       );
       return await orchestrator.execute();
     }
-    return 0;
+    if (normalizedAction !== "r") {
+      return 0;
+    }
   }
 
   const orchestrator = new BuildOrchestrator(selected.spec_id);
