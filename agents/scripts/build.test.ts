@@ -2,14 +2,17 @@ import { describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import child_process from "node:child_process";
 import {
   BuildOrchestrator,
   MODEL_TIERS,
   STAGE_MODELS,
   getStageModel,
   parseArguments,
+  formatGitmojiCommitMessage,
   formatHerdrTerminalName,
   listBuildsSnapshot,
+  validateGitmojiCommitMessage,
 } from "./build.ts";
 
 describe("BuildOrchestrator (build.ts)", () => {
@@ -670,5 +673,75 @@ esac
     } finally {
       fs.rmSync(tempRepo, { recursive: true, force: true });
     }
+  });
+
+  it("consolidates multiple feedback commits into a single clean commit before pushing", async () => {
+    const tempBase = fs.mkdtempSync(path.join(os.tmpdir(), "squash-merge-"));
+    const bareRemote = path.join(tempBase, "origin.git");
+    const repoDir = path.join(tempBase, "repo");
+    const worktreeDir = path.join(repoDir, ".worktrees", "feature-x");
+
+    try {
+      child_process.execFileSync("git", ["init", "--bare", "-b", "master", bareRemote]);
+      child_process.execFileSync("git", ["clone", bareRemote, repoDir]);
+      child_process.execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repoDir });
+      child_process.execFileSync("git", ["config", "user.name", "Test User"], { cwd: repoDir });
+      fs.writeFileSync(path.join(repoDir, "README.md"), "init\n");
+      child_process.execFileSync("git", ["add", "."], { cwd: repoDir });
+      child_process.execFileSync("git", ["commit", "--no-gpg-sign", "-m", "initial"], { cwd: repoDir });
+      child_process.execFileSync("git", ["push", "-u", "origin", "master"], { cwd: repoDir });
+
+      child_process.execFileSync("git", ["worktree", "add", "-b", "feature-x", worktreeDir, "master"], { cwd: repoDir });
+      child_process.execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: worktreeDir });
+      child_process.execFileSync("git", ["config", "user.name", "Test User"], { cwd: worktreeDir });
+
+      fs.writeFileSync(path.join(worktreeDir, "a.ts"), "export const a = 1;\n");
+      child_process.execFileSync("git", ["add", "."], { cwd: worktreeDir });
+      child_process.execFileSync("git", ["commit", "--no-gpg-sign", "-m", "✨ initial impl"], { cwd: worktreeDir });
+
+      fs.writeFileSync(path.join(worktreeDir, "a.ts"), "export const a = 2;\n");
+      child_process.execFileSync("git", ["add", "."], { cwd: worktreeDir });
+      child_process.execFileSync("git", ["commit", "--no-gpg-sign", "-m", "♻️ address human review feedback"], {
+        cwd: worktreeDir,
+      });
+
+      fs.writeFileSync(path.join(worktreeDir, "b.ts"), "export const b = 3;\n");
+
+      const mergeOrchestrator = new BuildOrchestrator("feature-x") as any;
+      mergeOrchestrator.spec = { identifier: "feature-x", title: "Add feature X", targetProject: "default" };
+      mergeOrchestrator.state = {
+        spec_id: "feature-x",
+        repo_dir: repoDir,
+        worktree_dir: worktreeDir,
+        branch_name: "feature-x",
+      };
+      mergeOrchestrator.cleanupWorktreeResources = () => {};
+      mergeOrchestrator.publishTaskDashboard = () => "https://example.test/feature-x/";
+      mergeOrchestrator.saveState = () => {};
+      mergeOrchestrator.sendOpenclawNotification = () => {};
+
+      const exitCode = await mergeOrchestrator.handleMergeAndPush();
+      expect(exitCode).toBe(0);
+
+      const logOutput = child_process
+        .execFileSync("git", ["-C", bareRemote, "log", "master", "--oneline"], { encoding: "utf-8" })
+        .trim()
+        .split("\n");
+      expect(logOutput.length).toBe(2);
+      expect(logOutput[0]).toContain("✨ Add feature X");
+    } finally {
+      fs.rmSync(tempBase, { recursive: true, force: true });
+    }
+  });
+
+  it("formats and validates Gitmoji commit subjects across commit types", () => {
+    expect(formatGitmojiCommitMessage("Fix starship trajectory scroll")).toBe("🐛 Fix starship trajectory scroll");
+    expect(formatGitmojiCommitMessage("Refactor build orchestrator")).toBe("♻️ Refactor build orchestrator");
+    expect(formatGitmojiCommitMessage("🔥 Remove legacy runner")).toBe("🔥 Remove legacy runner");
+    expect(validateGitmojiCommitMessage("🐛 Fix starship trajectory scroll")).toEqual({ valid: true });
+
+    expect(validateGitmojiCommitMessage("fix without emoji").valid).toBe(false);
+    expect(validateGitmojiCommitMessage("✨").valid).toBe(false);
+    expect(validateGitmojiCommitMessage("").valid).toBe(false);
   });
 });

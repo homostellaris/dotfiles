@@ -220,6 +220,44 @@ function runCommand(
   };
 }
 
+const GITMOJI_RULES: Array<{ pattern: RegExp; emoji: string }> = [
+  { pattern: /\b(fix|bug|broken|error|crash|fail(?:s|ed|ing)?|no longer|regression)\b/i, emoji: "🐛" },
+  { pattern: /\b(refactor|clean ?up|simplify|consolidate|extract)\b/i, emoji: "♻️" },
+  { pattern: /\b(docs?|documentation|readme|comment)\b/i, emoji: "📝" },
+  { pattern: /\b(test|spec|coverage|cypress)\b/i, emoji: "✅" },
+  { pattern: /\b(perf|performance|optimi[sz]e|speed|fast)\b/i, emoji: "⚡" },
+  { pattern: /\b(security|auth|permission|secret|token)\b/i, emoji: "🔒" },
+  { pattern: /\b(remove|delete|drop|prune|deprecate)\b/i, emoji: "🔥" },
+  { pattern: /\b(config|chore|build|ci|lint|setup|deps|dependency)\b/i, emoji: "🔧" },
+];
+
+const LEADING_EMOJI_PATTERN = /^(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)\s+(.+)$/u;
+
+export function validateGitmojiCommitMessage(message: string): { valid: boolean; reason?: string } {
+  const subject = message.trim().split("\n")[0]?.trim() || "";
+  if (!subject) {
+    return { valid: false, reason: "Commit subject cannot be empty." };
+  }
+  const match = subject.match(LEADING_EMOJI_PATTERN);
+  if (!match) {
+    return { valid: false, reason: `Commit subject must start with a Gitmoji followed by a space and description: "${subject}"` };
+  }
+  if (match[2].trim().length < 3) {
+    return { valid: false, reason: `Commit description after Gitmoji is too short: "${subject}"` };
+  }
+  return { valid: true };
+}
+
+export function formatGitmojiCommitMessage(rawTitle: string): string {
+  const singleLine = rawTitle.trim().split("\n")[0]?.trim() || "update implementation";
+  if (LEADING_EMOJI_PATTERN.test(singleLine)) {
+    return singleLine;
+  }
+  const matchedRule = GITMOJI_RULES.find((rule) => rule.pattern.test(singleLine));
+  const emoji = matchedRule ? matchedRule.emoji : "✨";
+  return `${emoji} ${singleLine}`;
+}
+
 export class BuildOrchestrator {
   public specQuery: string;
   public projectOverride?: string;
@@ -1380,6 +1418,61 @@ export class BuildOrchestrator {
     }
   }
 
+  consolidateBranchCommits(worktreeDir: string, defaultBranch: string, commitMessage: string): boolean {
+    if (this.hasUncommittedChanges(worktreeDir)) {
+      runCommand(["git", "add", "."], { cwd: worktreeDir, capture: false });
+      const wipCommit = runCommand(["git", "commit", "--no-gpg-sign", "-m", "chore: wip"], {
+        cwd: worktreeDir,
+        capture: true,
+      });
+      if (wipCommit.status !== 0) {
+        console.error(`❌ Failed to stage uncommitted changes before squash: ${wipCommit.stderr}`);
+        return false;
+      }
+    }
+
+    const fetchRes = runCommand(["git", "fetch", "origin", defaultBranch], { cwd: worktreeDir, capture: true });
+    if (fetchRes.status === 0) {
+      const rebaseRes = runCommand(["git", "rebase", `origin/${defaultBranch}`], {
+        cwd: worktreeDir,
+        capture: true,
+      });
+      if (rebaseRes.status !== 0) {
+        runCommand(["git", "rebase", "--abort"], { cwd: worktreeDir, capture: true });
+        console.error(`❌ Failed to rebase onto origin/${defaultBranch}: ${rebaseRes.stderr}`);
+        return false;
+      }
+
+      const resetRes = runCommand(["git", "reset", "--soft", `origin/${defaultBranch}`], {
+        cwd: worktreeDir,
+        capture: true,
+      });
+      if (resetRes.status !== 0) {
+        console.error(`❌ Failed to squash commits onto origin/${defaultBranch}: ${resetRes.stderr}`);
+        return false;
+      }
+    }
+
+    if (this.hasUncommittedChanges(worktreeDir)) {
+      const lintResult = validateGitmojiCommitMessage(commitMessage);
+      if (!lintResult.valid) {
+        console.error(`❌ Gitmoji commit lint failed: ${lintResult.reason}`);
+        return false;
+      }
+      runCommand(["git", "add", "."], { cwd: worktreeDir, capture: false });
+      const finalCommit = runCommand(["git", "commit", "--no-gpg-sign", "-m", commitMessage], {
+        cwd: worktreeDir,
+        capture: true,
+      });
+      if (finalCommit.status !== 0) {
+        console.error(`❌ Failed to create consolidated commit: ${finalCommit.stderr}`);
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   async handleMergeAndPush(): Promise<number> {
     if (!this.spec || !this.state) return 1;
 
@@ -1388,33 +1481,21 @@ export class BuildOrchestrator {
     const defaultBranch = getDefaultBranch(repoDir);
     const branchName = this.state.branch_name || this.spec.identifier;
 
-    // 1. Ensure all changes in worktree are committed
-    if (this.hasUncommittedChanges(worktreeDir)) {
-      runCommand(["git", "add", "."], { cwd: worktreeDir, capture: false });
+    const subject = formatGitmojiCommitMessage(this.spec.title);
+    const commitMessage =
+      `${subject}\n\n` +
+      `Co-authored-by: Antigravity <antigravity@google.com>`;
 
-      const commitMessage =
-        `✨ implement ${this.spec.title.toLowerCase()}\n\n` +
-        `Co-authored-by: Antigravity <antigravity@google.com>`;
-      runCommand(["git", "commit", "--no-gpg-sign", "-m", commitMessage], { cwd: worktreeDir, capture: false });
+    if (!this.consolidateBranchCommits(worktreeDir, defaultBranch, commitMessage)) {
+      return 1;
     }
 
     console.log(`🔀 Merging ${branchName} into ${defaultBranch} and pushing directly to origin...`);
 
-    // 2. Push worktree branch directly to remote origin default branch
-    let pushRes = runCommand(
+    const pushRes = runCommand(
       ["git", "push", "origin", `${branchName}:${defaultBranch}`],
       { cwd: worktreeDir, capture: true }
     );
-
-    if (pushRes.status !== 0) {
-      // Fetch latest and rebase onto remote default branch if needed
-      runCommand(["git", "fetch", "origin", defaultBranch], { cwd: worktreeDir, capture: true });
-      runCommand(["git", "rebase", `origin/${defaultBranch}`], { cwd: worktreeDir, capture: true });
-      pushRes = runCommand(
-        ["git", "push", "origin", `${branchName}:${defaultBranch}`],
-        { cwd: worktreeDir, capture: true }
-      );
-    }
 
     if (pushRes.status !== 0) {
       console.error(`❌ Failed to push branch to origin/${defaultBranch}: ${pushRes.stderr}`);
@@ -1532,20 +1613,6 @@ export class BuildOrchestrator {
       getStageModel("ciRepair", this.getActiveEffort())
     );
 
-    if (this.hasUncommittedChanges(this.state.worktree_dir)) {
-      runCommand(["git", "add", "."], { cwd: this.state.worktree_dir, capture: false });
-      runCommand(
-        [
-          "git",
-          "commit",
-          "--no-gpg-sign",
-          "-m",
-          "🐛 fix repository test suite failure\n\nCo-authored-by: Antigravity <antigravity@google.com>",
-        ],
-        { cwd: this.state.worktree_dir, capture: false }
-      );
-    }
-
     const retestResult = this.runRepositoryTestGate(this.state.worktree_dir);
     if (retestResult.success) {
       console.log("✅ Repository test script now passes.");
@@ -1630,20 +1697,6 @@ export class BuildOrchestrator {
       this.state.worktree_dir,
       getStageModel("commentResolver", this.getActiveEffort())
     );
-
-    if (this.hasUncommittedChanges(this.state.worktree_dir)) {
-      runCommand(["git", "add", "."], { cwd: this.state.worktree_dir, capture: false });
-      runCommand(
-        [
-          "git",
-          "commit",
-          "--no-gpg-sign",
-          "-m",
-          "♻️ address human review feedback\n\nCo-authored-by: Antigravity <antigravity@google.com>",
-        ],
-        { cwd: this.state.worktree_dir, capture: false }
-      );
-    }
 
     if (this.state) {
       this.state.pending_feedback = undefined;
