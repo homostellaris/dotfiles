@@ -725,6 +725,10 @@ export class BuildOrchestrator {
   determineExternalState(): string {
     if (!this.spec || !this.state) return "DISCOVER_SPEC";
 
+    if (this.state.deployed || this.state.stage === "COMPLETED") {
+      return "COMPLETED";
+    }
+
     const activeEffort = this.getActiveEffort();
     if (activeEffort >= 3) {
       const planStatus = this.checkPlanApprovalStatus(this.spec.identifier);
@@ -1320,6 +1324,62 @@ export class BuildOrchestrator {
     return 0;
   }
 
+  stopDevServer(portNumber: number): void {
+    const pidResult = runCommand(["lsof", "-t", "-i", `TCP@127.0.0.1:${portNumber}`, "-sTCP:LISTEN"], {
+      capture: true,
+    });
+    if (pidResult.status === 0 && pidResult.stdout.trim()) {
+      for (const line of pidResult.stdout.trim().split("\n")) {
+        const pid = parseInt(line.trim(), 10);
+        if (!Number.isNaN(pid) && pid > 0) {
+          try {
+            process.kill(pid, "SIGTERM");
+          } catch {}
+        }
+      }
+    }
+
+    try {
+      runCommand(["tailscale", "serve", `--https=${portNumber}`, "off"], { capture: true });
+    } catch {}
+  }
+
+  cleanupWorktreeResources(repoDir: string, worktreeDir?: string, branchName?: string): void {
+    const portToStop =
+      this.state?.port || (worktreeDir && fs.existsSync(worktreeDir) ? this.getWorktreePort(worktreeDir) : 0);
+    if (portToStop) {
+      this.stopDevServer(portToStop);
+    }
+
+    if (worktreeDir && worktreeDir !== repoDir && fs.existsSync(worktreeDir)) {
+      console.log(`🧹 Cleaning up worktree at: ${worktreeDir}`);
+      const worktreeHelper = findExecutable("worktree", [
+        path.join(os.homedir(), ".local", "bin", "worktree"),
+        path.join(os.homedir(), "code", "homostellaris", "dotfiles", "agents", "scripts", "worktree.ts"),
+      ]);
+      if (worktreeHelper && branchName) {
+        runCommand([worktreeHelper, "remove", branchName], { cwd: repoDir, capture: true });
+      } else {
+        runCommand(["git", "worktree", "remove", "--force", worktreeDir], { cwd: repoDir, capture: true });
+        if (branchName) {
+          runCommand(["git", "branch", "-D", branchName], { cwd: repoDir, capture: true });
+        }
+      }
+
+      if (fs.existsSync(worktreeDir)) {
+        fs.rmSync(worktreeDir, { recursive: true, force: true });
+        runCommand(["git", "worktree", "prune"], { cwd: repoDir, capture: true });
+      }
+    }
+
+    if (this.spec?.identifier) {
+      const symboldiffFile = path.join(STATE_DIRECTORY, `${this.spec.identifier}-symboldiff.html`);
+      if (fs.existsSync(symboldiffFile)) {
+        fs.rmSync(symboldiffFile, { force: true });
+      }
+    }
+  }
+
   async handleMergeAndPush(): Promise<number> {
     if (!this.spec || !this.state) return 1;
 
@@ -1369,26 +1429,8 @@ export class BuildOrchestrator {
       runCommand(["git", "pull", "--ff-only", "origin", defaultBranch], { cwd: repoDir, capture: true });
     }
 
-    // 4. Cleanup worktree if isolated
-    if (worktreeDir !== repoDir && fs.existsSync(worktreeDir)) {
-      const assignedPort = this.getWorktreePort(worktreeDir);
-      if (assignedPort) {
-        try {
-          runCommand(["tailscale", "serve", `--https=${assignedPort}`, "off"], { capture: true });
-        } catch {}
-      }
-      console.log(`🧹 Cleaning up worktree at: ${worktreeDir}`);
-      const worktreeHelper = findExecutable("worktree", [
-        path.join(os.homedir(), ".local", "bin", "worktree"),
-        path.join(os.homedir(), "code", "homostellaris", "dotfiles", "agents", "scripts", "worktree.ts"),
-      ]);
-      if (worktreeHelper && branchName) {
-        runCommand([worktreeHelper, "remove", branchName], { cwd: repoDir, capture: true });
-      } else {
-        runCommand(["git", "worktree", "remove", "--force", worktreeDir], { cwd: repoDir, capture: true });
-        runCommand(["git", "branch", "-D", branchName], { cwd: repoDir, capture: true });
-      }
-    }
+    // 4. Cleanup dev server, Tailscale serve, and worktree if isolated
+    this.cleanupWorktreeResources(repoDir, worktreeDir, branchName);
 
     this.state.merged = true;
     this.state.deployed = true;
@@ -1684,17 +1726,7 @@ export class BuildOrchestrator {
     if (!this.spec || !this.state) return 1;
 
     console.log("🚀 Verifying production deployment...");
-    if (
-      this.state.worktree_dir &&
-      this.state.worktree_dir !== this.state.repo_dir &&
-      fs.existsSync(this.state.worktree_dir)
-    ) {
-      runCommand(["git", "worktree", "remove", "--force", this.state.worktree_dir], {
-        cwd: this.state.repo_dir,
-        capture: false,
-      });
-      console.log(`🧹 Cleaned up worktree at: ${this.state.worktree_dir}`);
-    }
+    this.cleanupWorktreeResources(this.state.repo_dir, this.state.worktree_dir, this.state.branch_name);
 
     this.state.merged = true;
     this.state.deployed = true;

@@ -630,4 +630,45 @@ esac
 
     expect(reviewOrchestrator.checkHumanReviewStatus()).toBe("PENDING");
   });
+
+  it("returns COMPLETED from determineExternalState when deployed even after worktree removal", () => {
+    const completedOrchestrator = new BuildOrchestrator("canvas-section_y2vtpcom") as any;
+    completedOrchestrator.spec = { identifier: "canvas-section_y2vtpcom", title: "Canvas Section" };
+    completedOrchestrator.state = {
+      spec_id: "canvas-section_y2vtpcom",
+      stage: "COMPLETED",
+      deployed: true,
+      repo_dir: "/tmp/repo",
+      worktree_dir: "/tmp/nonexistent-worktree-dir",
+    };
+
+    expect(completedOrchestrator.determineExternalState()).toBe("COMPLETED");
+  });
+
+  it("stops dev server and removes leftover worktree directory during cleanupWorktreeResources", () => {
+    const tempRepo = fs.mkdtempSync(path.join(os.tmpdir(), "cleanup-repo-"));
+    const tempWorktree = path.join(tempRepo, ".worktrees", "test-spec");
+    fs.mkdirSync(path.join(tempWorktree, ".next"), { recursive: true });
+
+    const cleanupOrchestrator = new BuildOrchestrator("test-spec") as any;
+    let stoppedPort = 0;
+    cleanupOrchestrator.spec = { identifier: "test-spec", title: "Test Spec" };
+    cleanupOrchestrator.state = {
+      spec_id: "test-spec",
+      port: 6699,
+      repo_dir: tempRepo,
+      worktree_dir: tempWorktree,
+    };
+    cleanupOrchestrator.stopDevServer = (port: number) => {
+      stoppedPort = port;
+    };
+
+    try {
+      cleanupOrchestrator.cleanupWorktreeResources(tempRepo, tempWorktree, "test-spec");
+      expect(stoppedPort).toBe(6699);
+      expect(fs.existsSync(tempWorktree)).toBe(false);
+    } finally {
+      fs.rmSync(tempRepo, { recursive: true, force: true });
+    }
+  });
 });
