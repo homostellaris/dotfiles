@@ -1801,171 +1801,13 @@ export class BuildOrchestrator {
     workingDirectory: string,
     model: string = STAGE_MODELS.implementer
   ): Promise<boolean> {
-    const specIdentifier = this.spec?.identifier || "default";
-    const terminalName = formatHerdrTerminalName(specIdentifier, role);
-    const herdrCoreBinary = this.findHerdrCoreBinary();
-
-    if (!herdrCoreBinary || !fs.existsSync(herdrCoreBinary) || !this.ensureHerdrCore(herdrCoreBinary)) {
-      return await this.runAntigravityAgent(
-        role,
-        "You are an AI coding assistant.",
-        prompt,
-        workingDirectory,
-        model
-      );
-    }
-
-    const startedAt = new Date().toISOString();
-    const beforeSnapshots = this.snapshotBrainTranscripts();
-    let terminalAddress = terminalName;
-    let shouldCleanup = true;
-    let succeeded = false;
-
-    try {
-      const getResult = runCommand([herdrCoreBinary, "get", terminalName, "--json"], { capture: true });
-      let reuseLiveTerminal = false;
-
-      if (getResult.status === 0) {
-        const terminalInfo = this.parseHerdrCoreJson(getResult.stdout);
-        const ownerSpec = terminalInfo?.labels?.spec;
-        const isAlive = terminalInfo?.alive !== false && !terminalInfo?.exited_at;
-
-        if (!isAlive) {
-          runCommand([herdrCoreBinary, "rm", terminalName], { capture: true });
-        } else if (ownerSpec === specIdentifier) {
-          reuseLiveTerminal = true;
-          terminalAddress = terminalInfo?.id || terminalName;
-          const currentState = terminalInfo?.state || terminalInfo?.status || "";
-          if (currentState === "working") {
-            console.log(`⏳ Terminal '${terminalName}' (${terminalAddress}) is still working. Waiting for turn...`);
-            const preWait = this.waitForHerdrCoreTurn(herdrCoreBinary, terminalAddress);
-            if (!preWait.completed) {
-              if (preWait.status === "blocked" || preWait.status === "timed_out") {
-                shouldCleanup = false;
-                console.warn(`⚠️ Terminal '${terminalName}' (${terminalAddress}) ${preWait.status}. Attach with: hc attach ${terminalAddress}`);
-              }
-              return false;
-            }
-          }
-        } else {
-          console.error(`❌ Live terminal '${terminalName}' belongs to spec '${ownerSpec || "unknown"}', not '${specIdentifier}'.`);
-          return false;
-        }
-      } else if (getResult.status !== 3) {
-        console.warn(`⚠️ herdr-core get failed (exit ${getResult.status}), falling back to direct runner.`);
-        return await this.runAntigravityAgent(
-          terminalName,
-          "You are an AI coding assistant.",
-          prompt,
-          workingDirectory,
-          model
-        );
-      }
-
-      if (!reuseLiveTerminal) {
-        const agyFlags =
-          role === "plan" ? ["--mode", "plan"] : ["--dangerously-skip-permissions"];
-        const runCommandArgs = [
-          herdrCoreBinary,
-          "run",
-          "--bg",
-          "--json",
-          "--no-parent",
-          "--no-notify",
-          "--name",
-          terminalName,
-          "--cwd",
-          workingDirectory,
-          "--label",
-          `spec=${specIdentifier}`,
-          "--label",
-          `project=${this.spec?.targetProject || "default"}`,
-          "--label",
-          `role=${role}`,
-          "--",
-          "agy",
-          "--model",
-          model,
-          ...agyFlags,
-        ];
-
-        const launchResult = runCommand(runCommandArgs, { capture: true });
-        if (launchResult.status !== 0) {
-          console.error(`❌ herdr-core run error: ${launchResult.stderr || launchResult.stdout}`);
-          return false;
-        }
-
-        const launchJson = this.parseHerdrCoreJson(launchResult.stdout);
-        terminalAddress = launchJson?.id || terminalName;
-        console.log(`👉 Watch/steer in herdr-core: hc attach ${terminalAddress} (${terminalName})`);
-
-        const readyWait = this.waitForHerdrCoreTurn(herdrCoreBinary, terminalAddress);
-        if (!readyWait.completed) {
-          if (readyWait.status === "blocked" || readyWait.status === "timed_out") {
-            shouldCleanup = false;
-            console.warn(`⚠️ Terminal '${terminalName}' (${terminalAddress}) ${readyWait.status} during startup. Attach with: hc attach ${terminalAddress}`);
-          }
-          return false;
-        }
-      }
-
-      const sendResult = runCommand(
-        [herdrCoreBinary, "send", "--wait", terminalAddress, "--json", "--", prompt],
-        { capture: true }
-      );
-      const sendJson = this.parseHerdrCoreJson(sendResult.stdout);
-      const waitPayload = sendJson?.wait ?? sendJson;
-      const sendReason = waitPayload?.reason ?? sendJson?.reason;
-      const sendStatus = waitPayload?.status || sendJson?.status || sendJson?.state || "";
-      const sendExitCode =
-        typeof waitPayload?.exit_code === "number"
-          ? waitPayload.exit_code
-          : typeof sendJson?.exit_code === "number"
-            ? sendJson.exit_code
-            : null;
-
-      if (sendResult.status !== 0 && sendReason !== "timeout" && sendReason !== "message") {
-        console.error(`❌ herdr-core send error: ${sendResult.stderr || sendResult.stdout}`);
-        return false;
-      }
-
-      if (sendReason === "timeout" || sendReason === "message") {
-        const turnResult = this.waitForHerdrCoreTurn(herdrCoreBinary, terminalAddress);
-        if (!turnResult.completed) {
-          if (turnResult.status === "blocked" || turnResult.status === "timed_out") {
-            shouldCleanup = false;
-            console.warn(`⚠️ Terminal '${terminalName}' (${terminalAddress}) ${turnResult.status}. Attach with: hc attach ${terminalAddress}`);
-            this.sendOpenclawNotification(
-              `⚠️ Terminal '${terminalName}' (${terminalAddress}) ${turnResult.status} for '${specIdentifier}'. Run: hc attach ${terminalAddress}`
-            );
-          }
-          return false;
-        }
-        succeeded = true;
-        return true;
-      }
-
-      if (sendStatus === "blocked") {
-        shouldCleanup = false;
-        console.warn(`⚠️ Terminal '${terminalName}' (${terminalAddress}) is blocked. Attach with: hc attach ${terminalAddress}`);
-        this.sendOpenclawNotification(
-          `⚠️ Terminal '${terminalName}' (${terminalAddress}) is blocked for '${specIdentifier}'. Run: hc attach ${terminalAddress}`
-        );
-        return false;
-      }
-
-      if (sendStatus === "error" || (sendExitCode !== null && sendExitCode !== 0)) {
-        return false;
-      }
-
-      succeeded = true;
-      return true;
-    } finally {
-      this.recordAgentParticipation(role, model, startedAt, succeeded, beforeSnapshots, prompt);
-      if (shouldCleanup) {
-        this.cleanupHerdrCoreTerminal(herdrCoreBinary, terminalAddress);
-      }
-    }
+    return await this.runAntigravityAgent(
+      role,
+      "You are an AI coding assistant.",
+      prompt,
+      workingDirectory,
+      model
+    );
   }
 
   async runAntigravityAgent(
@@ -1983,7 +1825,8 @@ export class BuildOrchestrator {
     if (agyBinary && fs.existsSync(agyBinary)) {
       const startedAt = new Date().toISOString();
       const beforeSnapshots = this.snapshotBrainTranscripts();
-      const res = runCommand([agyBinary, "--model", model, "--dangerously-skip-permissions", "--print", prompt], {
+      const modeFlags = sessionName === "plan" ? ["--mode", "plan"] : ["--dangerously-skip-permissions"];
+      const res = runCommand([agyBinary, "--model", model, ...modeFlags, "--print", prompt], {
         cwd: workingDir,
         capture: false,
       });

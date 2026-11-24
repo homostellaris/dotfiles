@@ -471,47 +471,29 @@ Here is the specification details.
     }
   });
 
-  it("continues waiting via waitForHerdrCoreTurn when hc send returns nested wait.reason timeout", async () => {
-    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-send-nested-"));
-    const fakeHerdrBinary = path.join(temporaryDirectory, "hc");
-    const invocationLog = path.join(temporaryDirectory, "calls.log");
-    fs.writeFileSync(
-      fakeHerdrBinary,
-      `#!/bin/sh
-echo "$1" >> "${invocationLog}"
-case "$1" in
-  get)
-    exit 3
-    ;;
-  run)
-    echo '{"id":"term-nested-1"}'
-    ;;
-  wait)
-    echo '{"reason":"done","status":"idle","exit_code":0}'
-    ;;
-  send)
-    echo '{"started":null,"status":null,"turn":0,"wait":{"reason":"timeout","status":null,"exit_code":null}}'
-    ;;
-  kill|rm)
-    exit 0
-    ;;
-esac
-`,
-      { mode: 0o755 }
-    );
+  it("runs stages non-interactively via runAntigravityAgent instead of herdr-core", async () => {
+    const nonInteractiveOrchestrator = new BuildOrchestrator(undefined, "/tmp") as any;
+    let calledRole = "";
+    let calledPrompt = "";
+    let calledModel = "";
+    nonInteractiveOrchestrator.runAntigravityAgent = async (
+      role: string,
+      _systemPrompt: string,
+      prompt: string,
+      _workingDir: string,
+      model: string
+    ) => {
+      calledRole = role;
+      calledPrompt = prompt;
+      calledModel = model;
+      return true;
+    };
 
-    const testOrchestrator = new BuildOrchestrator(undefined, temporaryDirectory) as any;
-    testOrchestrator.findHerdrCoreBinary = () => fakeHerdrBinary;
-    testOrchestrator.ensureHerdrCore = () => true;
-
-    try {
-      const succeeded = await testOrchestrator.runAgentInHerdrCore("impl", "hello", temporaryDirectory, "gemini-flash");
-      expect(succeeded).toBe(true);
-      const recordedCalls = fs.readFileSync(invocationLog, "utf-8").trim().split("\n");
-      expect(recordedCalls.filter((command) => command === "wait").length).toBe(2);
-    } finally {
-      fs.rmSync(temporaryDirectory, { recursive: true, force: true });
-    }
+    const succeeded = await nonInteractiveOrchestrator.runAgentInHerdrCore("impl", "hello", "/tmp", "gemini-flash");
+    expect(succeeded).toBe(true);
+    expect(calledRole).toBe("impl");
+    expect(calledPrompt).toBe("hello");
+    expect(calledModel).toBe("gemini-flash");
   });
 
   it("does not re-poll Vercel toolbar comments immediately after RESOLVE_FEEDBACK", () => {
