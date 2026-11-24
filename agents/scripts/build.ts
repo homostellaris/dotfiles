@@ -2330,6 +2330,7 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
       effort: { type: "string", short: "e" },
       cwd: { type: "string", short: "C" },
       "spec-id": { type: "string" },
+      id: { type: "string" },
       project: { type: "string" },
       agent: { type: "string" },
       full: { type: "boolean", default: false },
@@ -2357,11 +2358,11 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     (arg) => arg !== "status" && arg !== "ls" && arg !== "rm" && arg !== "agents" && arg !== "transcript"
   );
 
-  let specId = values.spec || values["spec-id"];
+  let specId = values.id || values.spec || values["spec-id"];
   const inlinePrompt = values.prompt?.trim() || undefined;
 
   if (inlinePrompt && (specId || remainingPositionals.length > 0)) {
-    console.error("❌ Error: Cannot combine -p/--prompt with --spec or positional arguments.");
+    console.error("❌ Error: Cannot combine -p/--prompt with --id, --spec, or positional arguments.");
     process.exit(1);
   }
 
@@ -2369,7 +2370,7 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     specId = remainingPositionals[0];
   } else if (!isListCommand && !isRemoveCommand && !isAgentsCommand && !isTranscriptCommand && !isStatusCommand && remainingPositionals.length > 0) {
     console.error(
-      "❌ Error: Positional arguments are not supported. Use --spec <id> or -p \"<prompt>\" instead."
+      "❌ Error: Positional arguments are not supported. Use --id <id>, --spec <path>, or -p \"<prompt>\" instead."
     );
     process.exit(1);
   }
@@ -2400,16 +2401,18 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
 
   if (values.help || (!isListCommand && !isRemoveCommand && !isAgentsCommand && !isTranscriptCommand && !inlinePrompt && !specId)) {
     console.log('Usage: build -p "<prompt>" [options]');
-    console.log("       build --spec <id> [options]");
+    console.log("       build --spec <path-or-slug> [options]");
+    console.log("       build --id <build-id> [options]");
     console.log("       build ls [--all] [--json]");
-    console.log("       build agents --spec <id> [--json]");
-    console.log("       build transcript --spec <id> [--agent <#|role|id>] [--full]");
-    console.log("       build rm <spec-id>");
-    console.log("       build status [--spec <id>]");
-    console.log("\nAgentic coding workflow build orchestrator powered by Antigravity and herdr-core.");
+    console.log("       build agents --id <build-id> [--json]");
+    console.log("       build transcript --id <build-id> [--agent <#|role|id>] [--full]");
+    console.log("       build rm <build-id>");
+    console.log("       build status [--id <build-id>]");
+    console.log("\nAgentic coding workflow build orchestrator powered by Antigravity.");
     console.log("\nOptions:");
     console.log("  -p, --prompt <text>   Inline feature prompt to plan and build.");
-    console.log("  -s, --spec <id>       Pre-written spec identifier, slug, or file path.");
+    console.log("  -s, --spec <path>     Pre-written spec file path, slug, or identifier.");
+    console.log("  --id <build-id>       Resume, inspect, or approve an existing build by ID.");
     console.log("  -e, --effort <1|2|3>  Agent/model tier: 1 (fast single agent, default), 2 (fast + verifier), 3 (capable plan + impl + verifier). Always pauses for review.");
     console.log("  -C, --cwd <dir>       Override working directory for project/repo resolution.");
     console.log("  --project <project>   Override target project name.");

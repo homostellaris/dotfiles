@@ -778,4 +778,21 @@ Here is the specification details.
     expect(recordingOrchestrator.state.history[0].conversation_id).toBe("conv-123");
     expect(recordingOrchestrator.state.history[0].transcript_path).toBe("/tmp/transcript.jsonl");
   });
+
+  it("supports --id for resuming, inspecting agents, and viewing transcripts", () => {
+    const resumeArgs = parseArguments(["--id", "fix-the-no-role-icon_4330ptxv", "--approve-review"]);
+    expect(resumeArgs.command).toBe("run");
+    expect(resumeArgs.specId).toBe("fix-the-no-role-icon_4330ptxv");
+    expect(resumeArgs.approveScope).toBe("review");
+
+    const agentsArgs = parseArguments(["agents", "--id", "fix-the-no-role-icon_4330ptxv", "--json"]);
+    expect(agentsArgs.command).toBe("agents");
+    expect(agentsArgs.specId).toBe("fix-the-no-role-icon_4330ptxv");
+    expect(agentsArgs.jsonOutput).toBe(true);
+
+    const transcriptArgs = parseArguments(["transcript", "--id", "fix-the-no-role-icon_4330ptxv", "--agent", "impl"]);
+    expect(transcriptArgs.command).toBe("transcript");
+    expect(transcriptArgs.specId).toBe("fix-the-no-role-icon_4330ptxv");
+    expect(transcriptArgs.agentSelector).toBe("impl");
+  });
 });
