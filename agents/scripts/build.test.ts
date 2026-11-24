@@ -744,4 +744,29 @@ esac
     expect(validateGitmojiCommitMessage("✨").valid).toBe(false);
     expect(validateGitmojiCommitMessage("").valid).toBe(false);
   });
+
+  it("stays in IMPLEMENT_AND_FIX_LOCAL until implementation_completed is true even with dirty worktree", async () => {
+    const implOrchestrator = new BuildOrchestrator("test-dirty-worktree") as any;
+    implOrchestrator.spec = { identifier: "test-dirty-worktree", title: "Dirty Worktree" };
+    implOrchestrator.state = {
+      spec_id: "test-dirty-worktree",
+      stage: "WORKTREE_INITIALIZED",
+      effort: 1,
+      repo_dir: "/tmp/repo",
+      worktree_dir: "/tmp/worktree",
+      implementation_completed: false,
+    };
+    implOrchestrator.isWorktreeInitialized = () => true;
+    implOrchestrator.getCommitsAheadCount = () => 0;
+    implOrchestrator.hasUncommittedChanges = () => true;
+    implOrchestrator.runLocalTestGate = () => true;
+
+    expect(implOrchestrator.determineExternalState()).toBe("IMPLEMENT_AND_FIX_LOCAL");
+
+    implOrchestrator.runAgentInHerdrCore = async () => true;
+    implOrchestrator.saveState = () => {};
+    expect(await implOrchestrator.handleImplementation()).toBe(0);
+    expect(implOrchestrator.state.implementation_completed).toBe(true);
+    expect(implOrchestrator.determineExternalState()).toBe("AWAIT_HUMAN_REVIEW");
+  });
 });

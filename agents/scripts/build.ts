@@ -161,6 +161,7 @@ export interface BuildState {
   plan_file?: string;
   visual_plan_url?: string;
   plan_approved: boolean;
+  implementation_completed?: boolean;
   repo_tests_passed?: boolean;
   human_reviewed?: boolean;
   human_review_requested_at?: string;
@@ -787,9 +788,8 @@ export class BuildOrchestrator {
 
     const defaultBranch = getDefaultBranch(this.state.repo_dir);
     const commitsAhead = this.getCommitsAheadCount(this.state.worktree_dir, defaultBranch);
-    const hasUncommitted = this.hasUncommittedChanges(this.state.worktree_dir);
 
-    if (commitsAhead === 0 && !hasUncommitted) {
+    if (!this.state.implementation_completed && commitsAhead === 0) {
       return "IMPLEMENT_AND_FIX_LOCAL";
     }
 
@@ -1300,7 +1300,13 @@ export class BuildOrchestrator {
 
     if (fs.existsSync(path.join(this.state.worktree_dir, "package.json"))) {
       console.log("📦 Installing dependencies in worktree...");
-      runCommand(["bun", "install"], { cwd: this.state.worktree_dir, capture: false });
+      const frozenInstall = runCommand(["bun", "install", "--frozen-lockfile"], {
+        cwd: this.state.worktree_dir,
+        capture: false,
+      });
+      if (frozenInstall.status !== 0) {
+        runCommand(["bun", "install"], { cwd: this.state.worktree_dir, capture: false });
+      }
     }
 
     console.log("✅ Worktree and branch initialized successfully via worktree script.");
@@ -1358,6 +1364,8 @@ export class BuildOrchestrator {
       }
     }
 
+    this.state.implementation_completed = true;
+    this.saveState(this.state);
     console.log("✅ Local verification complete.");
     return 0;
   }
@@ -1691,12 +1699,16 @@ export class BuildOrchestrator {
         `Please address the comments, update components and tests accordingly, and ensure tests pass.`
       : `Please review recent comments and feedback from the human reviewer for '${this.spec.title}'${planReference}, implement requested adjustments, and verify tests pass.`;
 
-    await this.runAgentInHerdrCore(
+    const feedbackSuccess = await this.runAgentInHerdrCore(
       "feedback",
       fixPrompt,
       this.state.worktree_dir,
       getStageModel("commentResolver", this.getActiveEffort())
     );
+    if (!feedbackSuccess) {
+      console.error("❌ Feedback agent failed during execution.");
+      return 1;
+    }
 
     if (this.state) {
       this.state.pending_feedback = undefined;
