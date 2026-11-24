@@ -145,6 +145,17 @@ export interface SpecMetadata {
   targetProject: string;
 }
 
+export interface AgentParticipationRecord {
+  role: string;
+  model: string;
+  effort: BuildEffort;
+  started_at: string;
+  finished_at: string;
+  status: "completed" | "failed";
+  conversation_id?: string;
+  transcript_path?: string;
+}
+
 export interface BuildState {
   spec_id: string;
   spec_path: string;
@@ -167,13 +178,10 @@ export interface BuildState {
   human_review_requested_at?: string;
   addressed_toolbar_hash?: string;
   dev_url?: string;
-  pr_number?: number;
-  pr_url?: string;
-  pr_approved: boolean;
   verifier_passed: boolean;
   merged: boolean;
   deployed: boolean;
-  history: Array<Record<string, string>>;
+  history: AgentParticipationRecord[];
 }
 
 export function getDefaultBranch(repoDir: string): string {
@@ -352,7 +360,6 @@ export class BuildOrchestrator {
         const isTerminalPause =
           determinedStage === "AWAIT_PLAN_APPROVAL" ||
           determinedStage === "AWAIT_HUMAN_REVIEW" ||
-          determinedStage === "AWAIT_PR_MERGE" ||
           determinedStage === "AWAIT_CI_CHECKS" ||
           determinedStage === "COMPLETED";
 
@@ -630,7 +637,6 @@ export class BuildOrchestrator {
       branch_name: branchName,
       stage: "DISCOVER_SPEC",
       plan_approved: false,
-      pr_approved: false,
       verifier_passed: false,
       merged: false,
       deployed: false,
@@ -803,6 +809,9 @@ export class BuildOrchestrator {
       return "RESOLVE_FEEDBACK";
     }
     if (humanReviewStatus !== "APPROVED") {
+      if (this.shouldRunVerifier()) {
+        return "RUN_VERIFIER_AGENT";
+      }
       return "AWAIT_HUMAN_REVIEW";
     }
 
@@ -811,6 +820,18 @@ export class BuildOrchestrator {
     }
 
     return "MERGE_AND_PUSH";
+  }
+
+  hasPlanFile(specId: string): boolean {
+    const defaultPlanPath = path.join(STATE_DIRECTORY, "plans", `${specId}.md`);
+    const statePlanPath = this.state?.plan_file;
+    return Boolean((statePlanPath && fs.existsSync(statePlanPath)) || fs.existsSync(defaultPlanPath));
+  }
+
+  shouldRunVerifier(): boolean {
+    if (!this.spec || !this.state) return false;
+    const requiresReview = this.getActiveEffort() >= 2 || this.hasPlanFile(this.spec.identifier);
+    return requiresReview && !this.state.verifier_passed;
   }
 
   checkPlanApprovalStatus(specId: string): string {
@@ -955,8 +976,7 @@ export class BuildOrchestrator {
     if (
       this.approveScope === "review" ||
       this.approveScope === "any" ||
-      this.state?.human_reviewed ||
-      this.state?.pr_approved
+      this.state?.human_reviewed
     ) {
       if (this.state) {
         this.state.human_reviewed = true;
@@ -1091,72 +1111,6 @@ export class BuildOrchestrator {
     return { localUrl, tailscaleUrl };
   }
 
-  fetchPrDetails(repoDir: string, branchName?: string): Record<string, any> | null {
-    if (!branchName) return null;
-
-    const command = [
-      "gh",
-      "pr",
-      "list",
-      "--head",
-      branchName,
-      "--json",
-      "number,title,url,state,reviewDecision,statusCheckRollup,comments,mergedAt",
-      "--limit",
-      "1",
-    ];
-    const res = runCommand(command, { cwd: repoDir, capture: true });
-    if (res.status !== 0) return null;
-
-    try {
-      const prs = JSON.parse(res.stdout);
-      if (Array.isArray(prs) && prs.length > 0) {
-        return prs[0];
-      }
-    } catch {}
-    return null;
-  }
-
-  evaluateCiChecks(prInfo: Record<string, any>): string {
-    const rollup = prInfo.statusCheckRollup || [];
-    if (!rollup || rollup.length === 0) {
-      return "PASSED";
-    }
-
-    let hasPending = false;
-    for (const check of rollup) {
-      const status = check.status;
-      const conclusion = check.conclusion;
-      const state = check.state;
-
-      if (
-        ["FAILURE", "CANCELLED", "TIMED_OUT"].includes(conclusion) ||
-        state === "FAILURE"
-      ) {
-        return "FAILING";
-      }
-      if (["IN_PROGRESS", "QUEUED"].includes(status) || state === "PENDING") {
-        hasPending = true;
-      }
-    }
-
-    if (hasPending) {
-      return "RUNNING";
-    }
-    return "PASSED";
-  }
-
-  hasUnreadHumanComments(prInfo: Record<string, any>): boolean {
-    const comments = prInfo.comments || [];
-    for (const comment of comments) {
-      const author = comment.author?.login || "";
-      if (author && !author.endsWith("[bot]") && !author.toLowerCase().includes("antigravity")) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   async advanceLifecycle(stage: string): Promise<number> {
     if (stage === "GENERATE_PLAN" || stage === "REPLAN_WITH_FEEDBACK") {
       return await this.handlePlanGeneration();
@@ -1173,8 +1127,7 @@ export class BuildOrchestrator {
     }
     if (
       stage === "MERGE_AND_PUSH" ||
-      stage === "COMMIT_AND_PUSH" ||
-      stage === "CREATE_PR"
+      stage === "COMMIT_AND_PUSH"
     ) {
       return await this.handleMergeAndPush();
     }
@@ -1185,7 +1138,7 @@ export class BuildOrchestrator {
       console.log("⏳ CI checks are currently running. Exiting cleanly. Re-run after CI finishes.");
       return 0;
     }
-    if (stage === "RESOLVE_FEEDBACK" || stage === "RESOLVE_PR_COMMENTS") {
+    if (stage === "RESOLVE_FEEDBACK") {
       return await this.handleResolveFeedback();
     }
     if (stage === "AWAIT_HUMAN_REVIEW") {
@@ -1194,12 +1147,6 @@ export class BuildOrchestrator {
     }
     if (stage === "RUN_VERIFIER_AGENT") {
       return await this.handleVerifierAgent();
-    }
-    if (stage === "AWAIT_PR_MERGE") {
-      console.log(
-        `⏸️  PR #${this.state?.pr_number} is approved and verified. Awaiting human merge on GitHub: ${this.state?.pr_url}`
-      );
-      return 0;
     }
     if (stage === "VERIFY_DEPLOYMENT") {
       return this.handleVerifyDeployment();
@@ -1539,69 +1486,6 @@ export class BuildOrchestrator {
     return 0;
   }
 
-  handleCreatePr(): number {
-    this.handleMergeAndPush();
-    return 0;
-  }
-
-  legacyHandleCreatePr(): number {
-    if (!this.spec || !this.state || !this.state.worktree_dir || !this.state.branch_name) return 1;
-
-    console.log("📦 Committing and opening GitHub Pull Request...");
-    runCommand(["git", "add", "."], { cwd: this.state.worktree_dir, capture: false });
-
-    const commitMessage =
-      `✨ implement ${this.spec.title.toLowerCase()}\n\n` +
-      `Co-authored-by: Antigravity <antigravity@google.com>`;
-    runCommand(["git", "commit", "--no-gpg-sign", "-m", commitMessage], { cwd: this.state.worktree_dir, capture: false });
-
-    const pushRes = runCommand(
-      ["git", "push", "-u", "origin", this.state.branch_name],
-      { cwd: this.state.worktree_dir, capture: true }
-    );
-    if (pushRes.status !== 0) {
-      console.error(`❌ Failed to push branch: ${pushRes.stderr}`);
-      return 1;
-    }
-
-    const prBody =
-      `## Summary\n\n` +
-      `Automated implementation for **${this.spec.title}** (\`${this.spec.identifier}\`).\n\n` +
-      `- **Spec**: \`${this.spec.filePath}\`\n` +
-      `- **Visual Plan**: ${this.state.visual_plan_url || "N/A"}\n` +
-      `- **Target Project**: \`${this.spec.targetProject}\`\n`;
-
-    const createCommand = [
-      "gh",
-      "pr",
-      "create",
-      "--title",
-      `✨ ${this.spec.title}`,
-      "--body",
-      prBody,
-      "--head",
-      this.state.branch_name,
-    ];
-    const createRes = runCommand(createCommand, { cwd: this.state.repo_dir, capture: true });
-    if (createRes.status !== 0) {
-      console.error(`❌ Failed to create PR: ${createRes.stderr}`);
-      return 1;
-    }
-
-    const prUrl = createRes.stdout.trim();
-    console.log(`🎉 Pull Request created: ${prUrl}`);
-
-    this.state.pr_url = prUrl;
-    const dashboardUrl = this.publishTaskDashboard("PR OPEN");
-
-    const notificationMessage =
-      `🔔 [PR Ready for Review] Implementation complete for '${this.spec.title}'.\n` +
-      `📌 PR: ${prUrl}\n` +
-      `📱 Task Dashboard: ${dashboardUrl}`;
-    this.sendOpenclawNotification(notificationMessage);
-    return 0;
-  }
-
   async handleFixCi(): Promise<number> {
     if (!this.spec || !this.state || !this.state.worktree_dir) return 1;
 
@@ -1713,6 +1597,7 @@ export class BuildOrchestrator {
     if (this.state) {
       this.state.pending_feedback = undefined;
       this.state.stage = "RESOLVE_FEEDBACK";
+      this.state.verifier_passed = false;
       this.state.human_review_requested_at = new Date().toISOString();
       if (toolbarComments.count > 0 && toolbarComments.rawOutput) {
         this.state.addressed_toolbar_hash = this.hashToolbarComments(toolbarComments.rawOutput);
@@ -1724,66 +1609,38 @@ export class BuildOrchestrator {
     return 0;
   }
 
-  async handleResolvePrComments(): Promise<number> {
-    return await this.handleResolveFeedback();
-  }
-
   async handleVerifierAgent(): Promise<number> {
-    if (!this.spec || !this.state || !this.state.worktree_dir || !this.state.branch_name) return 1;
+    if (!this.spec || !this.state || !this.state.worktree_dir) return 1;
 
-    console.log(`🛡️  Spawning Antigravity Verifier Agent on PR #${this.state.pr_number}...`);
-    const diffRes = runCommand(["gh", "pr", "diff", String(this.state.pr_number)], {
-      cwd: this.state.repo_dir,
+    const model = getStageModel("verifier", this.getActiveEffort());
+    console.log(`🛡️  Spawning Verifier Agent (${model}) in worktree: ${this.state.worktree_dir}`);
+    const defaultBranch = getDefaultBranch(this.state.repo_dir);
+    const diffRes = runCommand(["git", "diff", defaultBranch], {
+      cwd: this.state.worktree_dir,
       capture: true,
     });
     const diffText = (diffRes.stdout || "").slice(0, 8000);
 
     const verifierPrompt =
-      `Review this PR diff for simplification, edge cases, and code hardening:\n\n` +
+      `Review this diff against '${defaultBranch}' for '${this.spec.title}' for simplification, edge cases, and code hardening:\n\n` +
       `\`\`\`diff\n${diffText}\n\`\`\`\n\n` +
       `Identify any dead code, missing error boundaries, or potential type regressions. ` +
-      `Apply direct hardening edits in the worktree.`;
+      `Apply direct hardening edits in the worktree and verify tests pass. Do not commit changes.`;
 
-    await this.runAgentInHerdrCore(
+    const verified = await this.runAgentInHerdrCore(
       "verify",
       verifierPrompt,
       this.state.worktree_dir,
-      getStageModel("verifier", this.getActiveEffort())
+      model
     );
-
-    const statusRes = runCommand(["git", "status", "--porcelain"], {
-      cwd: this.state.worktree_dir,
-      capture: true,
-    });
-    if (statusRes.stdout.trim()) {
-      runCommand(["git", "add", "."], { cwd: this.state.worktree_dir, capture: false });
-      runCommand(
-        [
-          "git",
-          "commit",
-          "--no-gpg-sign",
-          "-m",
-          "⚡ harden and simplify implementation\n\nCo-authored-by: Antigravity <antigravity@google.com>",
-        ],
-        { cwd: this.state.worktree_dir, capture: false }
-      );
-      runCommand(["git", "push", "origin", this.state.branch_name], {
-        cwd: this.state.worktree_dir,
-        capture: false,
-      });
+    if (!verified) {
+      console.error("❌ Verifier agent failed during execution.");
+      return 1;
     }
 
     this.state.verifier_passed = true;
-    const dashboardUrl = this.publishTaskDashboard("VERIFIED");
     this.saveState(this.state);
-
-    const notificationMessage =
-      `✅ [Ready for Merge] PR #${this.state.pr_number} for '${this.spec.title}' is verified & hardened.\n` +
-      `🔗 PR Link: ${this.state.pr_url}\n` +
-      `📱 Task Dashboard: ${dashboardUrl}\n` +
-      `Ready to merge when you are.`;
-    this.sendOpenclawNotification(notificationMessage);
-    console.log("✅ Verifier pass complete. PR ready for merge.");
+    console.log("✅ Verifier pass complete.");
     return 0;
   }
 
@@ -1862,6 +1719,82 @@ export class BuildOrchestrator {
     runCommand([herdrCoreBinary, "rm", terminalAddress], { capture: true });
   }
 
+  snapshotBrainTranscripts(): Map<string, number> {
+    const snapshots = new Map<string, number>();
+    const brainRoot = path.join(os.homedir(), ".gemini", "antigravity-cli", "brain");
+    if (!fs.existsSync(brainRoot)) return snapshots;
+
+    try {
+      for (const entry of fs.readdirSync(brainRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const transcriptPath = path.join(brainRoot, entry.name, ".system_generated", "logs", "transcript.jsonl");
+        if (fs.existsSync(transcriptPath)) {
+          snapshots.set(entry.name, fs.statSync(transcriptPath).mtimeMs);
+        }
+      }
+    } catch {}
+    return snapshots;
+  }
+
+  resolveRunTranscript(
+    beforeSnapshots: Map<string, number>,
+    promptSnippet: string
+  ): { conversation_id?: string; transcript_path?: string } {
+    const brainRoot = path.join(os.homedir(), ".gemini", "antigravity-cli", "brain");
+    if (!fs.existsSync(brainRoot)) return {};
+
+    const candidates: Array<{ id: string; path: string; mtimeMs: number; matchesPrompt: boolean }> = [];
+    const needle = promptSnippet.slice(0, 80).trim();
+    try {
+      for (const entry of fs.readdirSync(brainRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const transcriptPath = path.join(brainRoot, entry.name, ".system_generated", "logs", "transcript.jsonl");
+        if (!fs.existsSync(transcriptPath)) continue;
+        const mtimeMs = fs.statSync(transcriptPath).mtimeMs;
+        const previousMtime = beforeSnapshots.get(entry.name);
+        if (previousMtime !== undefined && mtimeMs <= previousMtime) continue;
+
+        let matchesPrompt = false;
+        if (needle) {
+          try {
+            const head = fs.readFileSync(transcriptPath, "utf-8").slice(0, 8192);
+            matchesPrompt = head.includes(needle);
+          } catch {}
+        }
+        candidates.push({ id: entry.name, path: transcriptPath, mtimeMs, matchesPrompt });
+      }
+    } catch {}
+
+    if (candidates.length === 0) return {};
+    candidates.sort((a, b) => Number(b.matchesPrompt) - Number(a.matchesPrompt) || b.mtimeMs - a.mtimeMs);
+    return { conversation_id: candidates[0].id, transcript_path: candidates[0].path };
+  }
+
+  recordAgentParticipation(
+    role: string,
+    model: string,
+    startedAt: string,
+    succeeded: boolean,
+    beforeSnapshots: Map<string, number>,
+    promptSnippet: string
+  ): void {
+    if (!this.state) return;
+    const transcriptInfo = this.resolveRunTranscript(beforeSnapshots, promptSnippet);
+    if (!Array.isArray(this.state.history)) {
+      this.state.history = [];
+    }
+    this.state.history.push({
+      role,
+      model,
+      effort: this.getActiveEffort(),
+      started_at: startedAt,
+      finished_at: new Date().toISOString(),
+      status: succeeded ? "completed" : "failed",
+      ...transcriptInfo,
+    });
+    this.saveState(this.state);
+  }
+
   async runAgentInHerdrCore(
     role: TerminalRole,
     prompt: string,
@@ -1874,7 +1807,7 @@ export class BuildOrchestrator {
 
     if (!herdrCoreBinary || !fs.existsSync(herdrCoreBinary) || !this.ensureHerdrCore(herdrCoreBinary)) {
       return await this.runAntigravityAgent(
-        terminalName,
+        role,
         "You are an AI coding assistant.",
         prompt,
         workingDirectory,
@@ -1882,8 +1815,11 @@ export class BuildOrchestrator {
       );
     }
 
+    const startedAt = new Date().toISOString();
+    const beforeSnapshots = this.snapshotBrainTranscripts();
     let terminalAddress = terminalName;
     let shouldCleanup = true;
+    let succeeded = false;
 
     try {
       const getResult = runCommand([herdrCoreBinary, "get", terminalName, "--json"], { capture: true });
@@ -2005,6 +1941,7 @@ export class BuildOrchestrator {
           }
           return false;
         }
+        succeeded = true;
         return true;
       }
 
@@ -2021,8 +1958,10 @@ export class BuildOrchestrator {
         return false;
       }
 
+      succeeded = true;
       return true;
     } finally {
+      this.recordAgentParticipation(role, model, startedAt, succeeded, beforeSnapshots, prompt);
       if (shouldCleanup) {
         this.cleanupHerdrCoreTerminal(herdrCoreBinary, terminalAddress);
       }
@@ -2030,7 +1969,7 @@ export class BuildOrchestrator {
   }
 
   async runAntigravityAgent(
-    _sessionName: string,
+    sessionName: string,
     _systemPrompt: string,
     prompt: string,
     workingDir: string,
@@ -2042,11 +1981,15 @@ export class BuildOrchestrator {
     ]);
 
     if (agyBinary && fs.existsSync(agyBinary)) {
+      const startedAt = new Date().toISOString();
+      const beforeSnapshots = this.snapshotBrainTranscripts();
       const res = runCommand([agyBinary, "--model", model, "--dangerously-skip-permissions", "--print", prompt], {
         cwd: workingDir,
         capture: false,
       });
-      return res.status === 0;
+      const succeeded = res.status === 0;
+      this.recordAgentParticipation(sessionName, model, startedAt, succeeded, beforeSnapshots, prompt);
+      return succeeded;
     }
 
     console.error("❌ Antigravity runtime not found.");
@@ -2113,13 +2056,6 @@ export class BuildOrchestrator {
 
     if (this.spec.filePath && fs.existsSync(this.spec.filePath)) {
       cmd.push("--spec", this.spec.filePath);
-    }
-
-    if (this.state.pr_url) {
-      cmd.push("--pr-url", this.state.pr_url);
-    }
-    if (this.state.pr_number) {
-      cmd.push("--pr-number", String(this.state.pr_number));
     }
 
     if (symboldiffPath && fs.existsSync(symboldiffPath)) {
@@ -2202,6 +2138,10 @@ export class BuildOrchestrator {
     console.log(`Worktree:       ${isWorktreeInit ? `initialized (port ${assignedPort})` : "uninitialized"}`);
     console.log(`Stage:          ${stage}`);
     console.log(`Dev Port:       ${assignedPort}`);
+    const agentCount = Array.isArray(this.state?.history) ? this.state.history.length : 0;
+    console.log(
+      `Agents:         ${agentCount} run(s)${agentCount > 0 && this.spec ? ` (inspect: build agents --spec ${this.spec.identifier})` : ""}`
+    );
   }
 }
 
@@ -2427,6 +2367,117 @@ function removeBuildState(specQuery: string): number {
   return 0;
 }
 
+function loadBuildStateHistory(specQuery: string): { stateFile: string; state: BuildState } | null {
+  const stateFile = path.join(STATE_DIRECTORY, `${specQuery}.json`);
+  if (!fs.existsSync(stateFile)) return null;
+  try {
+    return { stateFile, state: JSON.parse(fs.readFileSync(stateFile, "utf-8")) as BuildState };
+  } catch {
+    return null;
+  }
+}
+
+export function runBuildAgents(specQuery: string, jsonOutput: boolean = false): number {
+  if (!specQuery) {
+    console.error("❌ Usage: build agents --spec <spec-id>");
+    return 1;
+  }
+  const loaded = loadBuildStateHistory(specQuery);
+  if (!loaded) {
+    console.error(`❌ No build state found for '${specQuery}'.`);
+    return 1;
+  }
+  const agents = Array.isArray(loaded.state.history) ? loaded.state.history : [];
+  if (jsonOutput) {
+    console.log(JSON.stringify(agents, null, 2));
+    return 0;
+  }
+  if (agents.length === 0) {
+    console.log(`No recorded agent runs for '${specQuery}'.`);
+    return 0;
+  }
+  console.log(`\n🤖 Agents for '${specQuery}' (${agents.length}):\n`);
+  agents.forEach((entry, index) => {
+    const cid = entry.conversation_id || "unknown";
+    console.log(
+      `  [${index + 1}] ${entry.role}  |  ${entry.model}  |  effort ${entry.effort}  |  ${entry.status}  |  ${entry.started_at}  |  ${cid}`
+    );
+    if (entry.transcript_path) {
+      console.log(`      📄 ${entry.transcript_path}`);
+    }
+  });
+  console.log(`\n👉 Inspect a transcript: build transcript --spec ${specQuery} [--agent <#|role|conversation-id>] [--full]\n`);
+  return 0;
+}
+
+export function runBuildTranscript(
+  specQuery: string,
+  agentSelector?: string,
+  fullOutput: boolean = false
+): number {
+  if (!specQuery) {
+    console.error("❌ Usage: build transcript --spec <spec-id> [--agent <#|role|id>] [--full]");
+    return 1;
+  }
+  const loaded = loadBuildStateHistory(specQuery);
+  if (!loaded) {
+    console.error(`❌ No build state found for '${specQuery}'.`);
+    return 1;
+  }
+  const agents = Array.isArray(loaded.state.history) ? loaded.state.history : [];
+  if (agents.length === 0) {
+    console.error(`❌ No recorded agent runs for '${specQuery}'.`);
+    return 1;
+  }
+
+  let selected = agents[agents.length - 1];
+  if (agentSelector) {
+    const numericIndex = /^\d+$/.test(agentSelector) ? parseInt(agentSelector, 10) - 1 : -1;
+    if (numericIndex >= 0 && numericIndex < agents.length) {
+      selected = agents[numericIndex];
+    } else {
+      const matched = [...agents]
+        .reverse()
+        .find((entry) => entry.role === agentSelector || entry.conversation_id === agentSelector);
+      if (!matched) {
+        console.error(`❌ No agent matching '${agentSelector}' in '${specQuery}'.`);
+        return 1;
+      }
+      selected = matched;
+    }
+  }
+
+  if (!selected.transcript_path || !fs.existsSync(selected.transcript_path)) {
+    console.error(`❌ Transcript file not found for '${selected.role}' (${selected.conversation_id || "unknown"}).`);
+    return 1;
+  }
+
+  const rawLines = fs.readFileSync(selected.transcript_path, "utf-8").trim().split("\n").filter(Boolean);
+  if (fullOutput) {
+    console.log(rawLines.join("\n"));
+    return 0;
+  }
+
+  console.log(`\n📜 Transcript for ${selected.role} (${selected.model}, ${selected.conversation_id || "unknown"}):\n`);
+  for (const line of rawLines) {
+    try {
+      const step = JSON.parse(line);
+      if (step.type === "USER_INPUT" && step.content) {
+        console.log(`[step ${step.step_index}] USER:\n${String(step.content).slice(0, 400)}\n`);
+      } else if (step.type === "PLANNER_RESPONSE") {
+        const tools = Array.isArray(step.tool_calls) ? step.tool_calls.map((t: any) => t.name).join(", ") : "";
+        if (tools) {
+          console.log(`[step ${step.step_index}] TOOL CALLS: ${tools}`);
+        }
+        if (step.content) {
+          console.log(`[step ${step.step_index}] ASSISTANT:\n${String(step.content).slice(0, 800)}\n`);
+        }
+      }
+    } catch {}
+  }
+  return 0;
+}
+
 export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
   const { values, positionals } = parseArgs({
     args: rawArgs,
@@ -2437,6 +2488,8 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
       cwd: { type: "string", short: "C" },
       "spec-id": { type: "string" },
       project: { type: "string" },
+      agent: { type: "string" },
+      full: { type: "boolean", default: false },
       "dry-run": { type: "boolean", default: false },
       status: { type: "boolean", default: false },
       approve: { type: "boolean", default: false },
@@ -2453,10 +2506,12 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
   const subcommand = positionals[0];
   const isListCommand = subcommand === "ls";
   const isRemoveCommand = subcommand === "rm";
+  const isAgentsCommand = subcommand === "agents";
+  const isTranscriptCommand = subcommand === "transcript";
   const isStatusCommand = positionals.includes("status") || Boolean(values.status);
 
   const remainingPositionals = positionals.filter(
-    (arg) => arg !== "status" && arg !== "ls" && arg !== "rm"
+    (arg) => arg !== "status" && arg !== "ls" && arg !== "rm" && arg !== "agents" && arg !== "transcript"
   );
 
   let specId = values.spec || values["spec-id"];
@@ -2467,9 +2522,9 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     process.exit(1);
   }
 
-  if (isRemoveCommand && !specId && remainingPositionals.length === 1) {
+  if ((isRemoveCommand || isAgentsCommand || isTranscriptCommand) && !specId && remainingPositionals.length === 1) {
     specId = remainingPositionals[0];
-  } else if (!isListCommand && !isRemoveCommand && !isStatusCommand && remainingPositionals.length > 0) {
+  } else if (!isListCommand && !isRemoveCommand && !isAgentsCommand && !isTranscriptCommand && !isStatusCommand && remainingPositionals.length > 0) {
     console.error(
       "❌ Error: Positional arguments are not supported. Use --spec <id> or -p \"<prompt>\" instead."
     );
@@ -2500,10 +2555,12 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
     }
   }
 
-  if (values.help || (!isListCommand && !isRemoveCommand && !inlinePrompt && !specId)) {
+  if (values.help || (!isListCommand && !isRemoveCommand && !isAgentsCommand && !isTranscriptCommand && !inlinePrompt && !specId)) {
     console.log('Usage: build -p "<prompt>" [options]');
     console.log("       build --spec <id> [options]");
     console.log("       build ls [--all] [--json]");
+    console.log("       build agents --spec <id> [--json]");
+    console.log("       build transcript --spec <id> [--agent <#|role|id>] [--full]");
     console.log("       build rm <spec-id>");
     console.log("       build status [--spec <id>]");
     console.log("\nAgentic coding workflow build orchestrator powered by Antigravity and herdr-core.");
@@ -2552,12 +2609,22 @@ export function parseArguments(rawArgs: string[] = process.argv.slice(2)) {
   }
 
   return {
-    command: isListCommand ? ("ls" as const) : isRemoveCommand ? ("rm" as const) : ("run" as const),
+    command: isListCommand
+      ? ("ls" as const)
+      : isRemoveCommand
+        ? ("rm" as const)
+        : isAgentsCommand
+          ? ("agents" as const)
+          : isTranscriptCommand
+            ? ("transcript" as const)
+            : ("run" as const),
     prompt: inlinePrompt,
     effort,
     cwd: resolvedCwd,
     specId: specId || "",
     project: values.project,
+    agentSelector: values.agent,
+    fullOutput: Boolean(values.full),
     approve: Boolean(approveScope),
     approveScope,
     feedback: values.feedback?.trim() || undefined,
@@ -2578,6 +2645,20 @@ async function main() {
 
   if (parsedArguments.command === "rm") {
     const exitCode = removeBuildState(parsedArguments.specId);
+    process.exit(exitCode);
+  }
+
+  if (parsedArguments.command === "agents") {
+    const exitCode = runBuildAgents(parsedArguments.specId, parsedArguments.jsonOutput);
+    process.exit(exitCode);
+  }
+
+  if (parsedArguments.command === "transcript") {
+    const exitCode = runBuildTranscript(
+      parsedArguments.specId,
+      parsedArguments.agentSelector,
+      parsedArguments.fullOutput
+    );
     process.exit(exitCode);
   }
 

@@ -141,57 +141,6 @@ Here is the specification details.
     expect(spec?.identifier).toBe("use-next-dev-loop-skill_9dxlucom");
   });
 
-  it("evaluates CI rollup checks properly", () => {
-    expect(orchestrator.evaluateCiChecks({ statusCheckRollup: [] })).toBe("PASSED");
-
-    expect(
-      orchestrator.evaluateCiChecks({
-        statusCheckRollup: [
-          { status: "COMPLETED", conclusion: "SUCCESS" },
-          { status: "COMPLETED", conclusion: "SUCCESS" },
-        ],
-      })
-    ).toBe("PASSED");
-
-    expect(
-      orchestrator.evaluateCiChecks({
-        statusCheckRollup: [
-          { status: "COMPLETED", conclusion: "FAILURE" },
-          { status: "COMPLETED", conclusion: "SUCCESS" },
-        ],
-      })
-    ).toBe("FAILING");
-
-    expect(
-      orchestrator.evaluateCiChecks({
-        statusCheckRollup: [
-          { status: "IN_PROGRESS", conclusion: null },
-          { status: "COMPLETED", conclusion: "SUCCESS" },
-        ],
-      })
-    ).toBe("RUNNING");
-  });
-
-  it("distinguishes human comments from bot and antigravity comments", () => {
-    expect(
-      orchestrator.hasUnreadHumanComments({
-        comments: [
-          { author: { login: "github-actions[bot]" } },
-          { author: { login: "antigravity-bot" } },
-        ],
-      })
-    ).toBe(false);
-
-    expect(
-      orchestrator.hasUnreadHumanComments({
-        comments: [
-          { author: { login: "github-actions[bot]" } },
-          { author: { login: "homostellaris" } },
-        ],
-      })
-    ).toBe(true);
-  });
-
   it("parses --approve flag correctly", () => {
     const parsedArguments = parseArguments(["--spec-id", "canvas-section_y2vtpcom", "--approve"]);
     expect(parsedArguments.approve).toBe(true);
@@ -768,5 +717,83 @@ esac
     expect(await implOrchestrator.handleImplementation()).toBe(0);
     expect(implOrchestrator.state.implementation_completed).toBe(true);
     expect(implOrchestrator.determineExternalState()).toBe("AWAIT_HUMAN_REVIEW");
+  });
+
+  it("routes to RUN_VERIFIER_AGENT when a plan exists or effort >= 2 until verifier_passed", async () => {
+    const verifierOrchestrator = new BuildOrchestrator("test-verifier-routing") as any;
+    verifierOrchestrator.spec = { identifier: "test-verifier-routing", title: "Verifier Routing" };
+    verifierOrchestrator.state = {
+      spec_id: "test-verifier-routing",
+      stage: "IMPLEMENT_AND_FIX_LOCAL",
+      effort: 1,
+      repo_dir: "/tmp/repo",
+      worktree_dir: "/tmp/worktree",
+      implementation_completed: true,
+      verifier_passed: false,
+    };
+    verifierOrchestrator.isWorktreeInitialized = () => true;
+    verifierOrchestrator.getCommitsAheadCount = () => 1;
+    verifierOrchestrator.runLocalTestGate = () => true;
+    verifierOrchestrator.hasPlanFile = () => false;
+
+    expect(verifierOrchestrator.determineExternalState()).toBe("AWAIT_HUMAN_REVIEW");
+
+    verifierOrchestrator.hasPlanFile = () => true;
+    expect(verifierOrchestrator.determineExternalState()).toBe("RUN_VERIFIER_AGENT");
+
+    verifierOrchestrator.state.verifier_passed = true;
+    expect(verifierOrchestrator.determineExternalState()).toBe("AWAIT_HUMAN_REVIEW");
+
+    verifierOrchestrator.hasPlanFile = () => false;
+    verifierOrchestrator.state.effort = 2;
+    verifierOrchestrator.state.verifier_passed = false;
+    expect(verifierOrchestrator.determineExternalState()).toBe("RUN_VERIFIER_AGENT");
+  });
+
+  it("parses build agents and build transcript commands and records agent participation", () => {
+    const agentsArgs = parseArguments(["agents", "--spec", "canvas-section_y2vtpcom", "--json"]);
+    expect(agentsArgs.command).toBe("agents");
+    expect(agentsArgs.specId).toBe("canvas-section_y2vtpcom");
+    expect(agentsArgs.jsonOutput).toBe(true);
+
+    const transcriptArgs = parseArguments([
+      "transcript",
+      "--spec",
+      "canvas-section_y2vtpcom",
+      "--agent",
+      "verify",
+      "--full",
+    ]);
+    expect(transcriptArgs.command).toBe("transcript");
+    expect(transcriptArgs.agentSelector).toBe("verify");
+    expect(transcriptArgs.fullOutput).toBe(true);
+
+    const recordingOrchestrator = new BuildOrchestrator("test-agent-history") as any;
+    recordingOrchestrator.spec = { identifier: "test-agent-history", title: "History" };
+    recordingOrchestrator.state = {
+      spec_id: "test-agent-history",
+      effort: 3,
+      history: [],
+    };
+    recordingOrchestrator.resolveRunTranscript = () => ({
+      conversation_id: "conv-123",
+      transcript_path: "/tmp/transcript.jsonl",
+    });
+    recordingOrchestrator.saveState = () => {};
+
+    recordingOrchestrator.recordAgentParticipation(
+      "verify",
+      "claude-opus-5-5-high",
+      "2026-11-24T21:00:00.000Z",
+      true,
+      new Map(),
+      "Review this diff"
+    );
+
+    expect(recordingOrchestrator.state.history.length).toBe(1);
+    expect(recordingOrchestrator.state.history[0].role).toBe("verify");
+    expect(recordingOrchestrator.state.history[0].model).toBe("claude-opus-5-5-high");
+    expect(recordingOrchestrator.state.history[0].conversation_id).toBe("conv-123");
+    expect(recordingOrchestrator.state.history[0].transcript_path).toBe("/tmp/transcript.jsonl");
   });
 });
