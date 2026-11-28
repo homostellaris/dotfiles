@@ -1203,8 +1203,9 @@ export class BuildOrchestrator {
     const notificationMessage =
       `⚠️ [Plan Review Required] Technical plan generated for '${this.spec.title}'.\n` +
       `🔗 Plan Dashboard: ${dashboardUrl}\n` +
-      `📄 Plan File: ${markdownPlanPath}\n` +
-      `Run 'build --spec ${this.spec.identifier} --approve-plan' or 'build ls' to approve/revise.`;
+      `📄 Plan File: ${markdownPlanPath}\n\n` +
+      `Approve:\n\`\`\`build --id ${this.spec.identifier} --approve-plan\`\`\`\n` +
+      `Or manage:\n\`\`\`build ls\`\`\``;
     this.sendOpenclawNotification(notificationMessage);
 
     console.log(`✅ Plan published to dashboard: ${dashboardUrl}`);
@@ -1217,8 +1218,8 @@ export class BuildOrchestrator {
     console.log("⏸️  Technical plan is waiting for your review:");
     console.log(`🔗 ${this.state?.visual_plan_url || `${getTailscaleBaseUrl()}/`}`);
     console.log(`📄 Markdown Plan: ${this.state?.plan_file || "N/A"}`);
-    console.log(`👉 Approve:  build --spec ${this.spec?.identifier} --approve-plan`);
-    console.log(`👉 Feedback: build --spec ${this.spec?.identifier} --feedback "<comments>" (or run 'build ls')`);
+    console.log(`👉 Approve:  build --id ${this.spec?.identifier} --approve-plan`);
+    console.log(`👉 Feedback: build --id ${this.spec?.identifier} --feedback "<comments>" (or run 'build ls')`);
   }
 
   handleSetupWorktree(): number {
@@ -1539,19 +1540,20 @@ export class BuildOrchestrator {
     console.log(`📱 Tailscale Dev URL:  ${tailscaleUrl}`);
     console.log(`📊 Task Dashboard:     ${dashboardUrl}`);
     console.log(`✨ Vercel Toolbar:     Active for visual comments and annotations in-browser`);
-    console.log(`👉 Send feedback:      build --spec ${this.spec.identifier} --feedback "<your comments>"`);
+    console.log(`👉 Send feedback:      build --id ${this.spec.identifier} --feedback "<your comments>"`);
     console.log(`👉 Or manage via:      build ls`);
     console.log(`\n✅ Once satisfied, approve via:`);
-    console.log(`   - Run: build --spec ${this.spec.identifier} --approve-review`);
+    console.log(`   - Run: build --id ${this.spec.identifier} --approve-review`);
     console.log("==================================================\n");
 
     const notificationMessage =
       `⏸️ [Human Review Required] '${this.spec.title}' is ready for review!\n` +
       `🌐 Local: ${localUrl}\n` +
       `📱 Tailscale: ${tailscaleUrl}\n` +
-      `📊 Dashboard: ${dashboardUrl}\n` +
-      `✨ Use Vercel Toolbar for comments, 'build --spec ${this.spec.identifier} --feedback "..."', or 'build ls'.\n` +
-      `Run 'build --spec ${this.spec.identifier} --approve-review' to merge.`;
+      `📊 Dashboard: ${dashboardUrl}\n\n` +
+      `Send feedback:\n\`\`\`build --id ${this.spec.identifier} --feedback "<your comments>"\`\`\`\n` +
+      `Approve & merge:\n\`\`\`build --id ${this.spec.identifier} --approve-review\`\`\`\n` +
+      `Or manage:\n\`\`\`build ls\`\`\``;
     this.sendOpenclawNotification(notificationMessage);
   }
 
